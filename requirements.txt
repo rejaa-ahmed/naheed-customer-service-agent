@@ -1,0 +1,7 @@
+streamlit
+python-dotenv
+mysql-connector-python
+pandas
+google-genai
+tenacity
+pydantic

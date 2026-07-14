@@ -1,0 +1,402 @@
+[
+    {
+        "text": "Hello there",
+        "intent": "greeting"
+    },
+    {
+        "text": "Hi",
+        "intent": "greeting"
+    },
+    {
+        "text": "Assalam o alaikum",
+        "intent": "greeting"
+    },
+    {
+        "text": "Good morning",
+        "intent": "greeting"
+    },
+    {
+        "text": "hey bot",
+        "intent": "greeting"
+    },
+    {
+        "text": "Hello Naheed",
+        "intent": "greeting"
+    },
+    {
+        "text": "hiiiii",
+        "intent": "greeting"
+    },
+    {
+        "text": "Goodbye",
+        "intent": "goodbye"
+    },
+    {
+        "text": "Thanks bye",
+        "intent": "goodbye"
+    },
+    {
+        "text": "Khuda hafiz",
+        "intent": "goodbye"
+    },
+    {
+        "text": "See you",
+        "intent": "goodbye"
+    },
+    {
+        "text": "Ok bye",
+        "intent": "goodbye"
+    },
+    {
+        "text": "Where is my order?",
+        "intent": "order_tracking"
+    },
+    {
+        "text": "Track order 100000123",
+        "intent": "order_tracking"
+    },
+    {
+        "text": "I want to track my parcel",
+        "intent": "order_tracking"
+    },
+    {
+        "text": "Check status for 555444333",
+        "intent": "order_tracking"
+    },
+    {
+        "text": "Can you tell me where order 987654321 is?",
+        "intent": "order_tracking"
+    },
+    {
+        "text": "Mera order kahan hai?",
+        "intent": "order_tracking"
+    },
+    {
+        "text": "Order kab tak aye ga?",
+        "intent": "order_tracking"
+    },
+    {
+        "text": "Bhai mera parcel 12345 track kardo",
+        "intent": "order_tracking"
+    },
+    {
+        "text": "I placed an order yesterday.",
+        "intent": "order_tracking"
+    },
+    {
+        "text": "order trckng",
+        "intent": "order_tracking"
+    },
+    {
+        "text": "My order hasn't arrived.",
+        "intent": "order_tracking"
+    },
+    {
+        "text": "when delivery?",
+        "intent": "order_tracking"
+    },
+    {
+        "text": "trac my package 999888777",
+        "intent": "order_tracking"
+    },
+    {
+        "text": "Track order 12345 and 67890",
+        "intent": "order_tracking"
+    },
+    {
+        "text": "Where are my orders 111 and 222?",
+        "intent": "order_tracking"
+    },
+    {
+        "text": "Order 4567 arrived but 8901 is missing",
+        "intent": "order_tracking"
+    },
+    {
+        "text": "I want to complain.",
+        "intent": "complaint"
+    },
+    {
+        "text": "The item I received is broken.",
+        "intent": "complaint"
+    },
+    {
+        "text": "Missing items in my delivery.",
+        "intent": "complaint"
+    },
+    {
+        "text": "Horrible service, I need to complain.",
+        "intent": "complaint"
+    },
+    {
+        "text": "File a complaint for order 12345",
+        "intent": "complaint"
+    },
+    {
+        "text": "This is ridiculous! I am never shopping here again!",
+        "intent": "complaint"
+    },
+    {
+        "text": "Worst experience ever. Fix this now.",
+        "intent": "complaint"
+    },
+    {
+        "text": "Are you guys scammers??? My parcel is empty!",
+        "intent": "complaint"
+    },
+    {
+        "text": "Baqwas service hai aap ki",
+        "intent": "complaint"
+    },
+    {
+        "text": "Wah kya service hai, toota hua saman bhej diya",
+        "intent": "complaint"
+    },
+    {
+        "text": "Mujhe shikayat karni hai",
+        "intent": "complaint"
+    },
+    {
+        "text": "I want a refund.",
+        "intent": "refund"
+    },
+    {
+        "text": "How do I get my money back?",
+        "intent": "refund"
+    },
+    {
+        "text": "Cancel my order and refund me",
+        "intent": "refund"
+    },
+    {
+        "text": "Refund required for 12345",
+        "intent": "refund"
+    },
+    {
+        "text": "Return product and need refund",
+        "intent": "refund"
+    },
+    {
+        "text": "Mera paisa wapas karo",
+        "intent": "refund"
+    },
+    {
+        "text": "Refund kab milega?",
+        "intent": "refund"
+    },
+    {
+        "text": "What are your delivery hours?",
+        "intent": "general_query"
+    },
+    {
+        "text": "Do you sell shoes?",
+        "intent": "general_query"
+    },
+    {
+        "text": "Where is your store located?",
+        "intent": "general_query"
+    },
+    {
+        "text": "Do you offer cash on delivery?",
+        "intent": "general_query"
+    },
+    {
+        "text": "Can I pay with credit card?",
+        "intent": "general_query"
+    },
+    {
+        "text": "Store timings kya hain?",
+        "intent": "general_query"
+    },
+    {
+        "text": "Is delivery free?",
+        "intent": "general_query"
+    },
+    {
+        "text": "Who is the president of the USA?",
+        "intent": "unknown"
+    },
+    {
+        "text": "Translate this to French",
+        "intent": "unknown"
+    },
+    {
+        "text": "Write a poem about shopping",
+        "intent": "unknown"
+    },
+    {
+        "text": "123",
+        "intent": "unknown"
+    },
+    {
+        "text": "asdfasdfasdf",
+        "intent": "unknown"
+    },
+    {
+        "text": "Tell me a joke",
+        "intent": "unknown"
+    },
+    {
+        "text": "Refund my order 13839",
+        "intent": "refund"
+    },
+    {
+        "text": "Is 36288 in stock?",
+        "intent": "general_query"
+    },
+    {
+        "text": "I hate 30224",
+        "intent": "complaint"
+    },
+    {
+        "text": "Refund my order 98009",
+        "intent": "refund"
+    },
+    {
+        "text": "I hate 78044",
+        "intent": "complaint"
+    },
+    {
+        "text": "Please check order 74928",
+        "intent": "order_tracking"
+    },
+    {
+        "text": "Please check order 51969",
+        "intent": "order_tracking"
+    },
+    {
+        "text": "Please check order 15782",
+        "intent": "order_tracking"
+    },
+    {
+        "text": "Refund my order 71858",
+        "intent": "refund"
+    },
+    {
+        "text": "Cancel 29143",
+        "intent": "refund"
+    },
+    {
+        "text": "Cancel 29610",
+        "intent": "refund"
+    },
+    {
+        "text": "I hate 91231",
+        "intent": "complaint"
+    },
+    {
+        "text": "Is 20293 in stock?",
+        "intent": "general_query"
+    },
+    {
+        "text": "Is 57708 in stock?",
+        "intent": "general_query"
+    },
+    {
+        "text": "Complaint regarding 32462",
+        "intent": "complaint"
+    },
+    {
+        "text": "Complaint regarding 60708",
+        "intent": "complaint"
+    },
+    {
+        "text": "Please check order 37728",
+        "intent": "order_tracking"
+    },
+    {
+        "text": "Complaint regarding 86575",
+        "intent": "complaint"
+    },
+    {
+        "text": "Cancel 78035",
+        "intent": "refund"
+    },
+    {
+        "text": "Complaint regarding 60908",
+        "intent": "complaint"
+    },
+    {
+        "text": "Complaint regarding 86910",
+        "intent": "complaint"
+    },
+    {
+        "text": "Hello I am 39414",
+        "intent": "greeting"
+    },
+    {
+        "text": "Is 90049 in stock?",
+        "intent": "general_query"
+    },
+    {
+        "text": "My package 73673 is late",
+        "intent": "complaint"
+    },
+    {
+        "text": "Is 95332 in stock?",
+        "intent": "general_query"
+    },
+    {
+        "text": "Cancel 39936",
+        "intent": "refund"
+    },
+    {
+        "text": "I hate 54275",
+        "intent": "complaint"
+    },
+    {
+        "text": "Please check order 41010",
+        "intent": "order_tracking"
+    },
+    {
+        "text": "Is 96636 in stock?",
+        "intent": "general_query"
+    },
+    {
+        "text": "Cancel 33934",
+        "intent": "refund"
+    },
+    {
+        "text": "My package 52029 is late",
+        "intent": "complaint"
+    },
+    {
+        "text": "Please check order 35025",
+        "intent": "order_tracking"
+    },
+    {
+        "text": "Refund my order 46475",
+        "intent": "refund"
+    },
+    {
+        "text": "Cancel 20860",
+        "intent": "refund"
+    },
+    {
+        "text": "Cancel 34964",
+        "intent": "refund"
+    },
+    {
+        "text": "Hello I am 90258",
+        "intent": "greeting"
+    },
+    {
+        "text": "Please check order 95711",
+        "intent": "order_tracking"
+    },
+    {
+        "text": "Please check order 34573",
+        "intent": "order_tracking"
+    },
+    {
+        "text": "Refund my order 69458",
+        "intent": "refund"
+    },
+    {
+        "text": "My package 63829 is late",
+        "intent": "complaint"
+    },
+    {
+        "text": "My package 14653 is late",
+        "intent": "complaint"
+    }
+]
