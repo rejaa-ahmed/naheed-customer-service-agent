@@ -12,61 +12,73 @@ from core.conversation_manager import ConversationManager
 class TestIntentParser(unittest.TestCase):
     
     def setUp(self):
-        self.mock_client = MagicMock()
-        self.parser = IntentParser(client=self.mock_client)
+        self.mock_factory = MagicMock()
+        self.parser = IntentParser(factory=self.mock_factory)
     
     def test_markdown_json_parsing(self):
-        self.mock_client.generate_content.return_value = '```json\n{"intent": "greeting", "confidence": 0.99, "entities": {}}\n```'
+        self.mock_factory.generate_content_with_failover.return_value = '```json\n{"intent": "greeting", "confidence": 0.99, "entities": {}}\n```'
         result = self.parser.parse_intent("Hello")
         self.assertEqual(result.intent, "greeting")
         
     def test_greeting_intent(self):
-        self.mock_client.generate_content.return_value = '{"intent": "greeting", "confidence": 0.99, "entities": {}}'
+        self.mock_factory.generate_content_with_failover.return_value = '{"intent": "greeting", "confidence": 0.99, "entities": {}}'
         result = self.parser.parse_intent("Hi")
         self.assertEqual(result.intent, "greeting")
         
     def test_order_tracking_with_entity(self):
-        self.mock_client.generate_content.return_value = '{"intent": "order_tracking", "confidence": 0.95, "entities": {"order_id": "12345"}, "tool": "track_order"}'
+        self.mock_factory.generate_content_with_failover.return_value = '{"intent": "order_tracking", "confidence": 0.95, "entities": {"order_id": "12345"}, "tool": "track_order"}'
         result = self.parser.parse_intent("Track order 12345")
         self.assertEqual(result.intent, "order_tracking")
         self.assertEqual(result.entities.order_id, "12345")
         self.assertEqual(result.tool, "track_order")
         
     def test_complaint_intent(self):
-        self.mock_client.generate_content.return_value = '{"intent": "complaint", "confidence": 0.99, "entities": {}}'
+        self.mock_factory.generate_content_with_failover.return_value = '{"intent": "complaint", "confidence": 0.99, "entities": {}}'
         result = self.parser.parse_intent("I want to complain")
         self.assertEqual(result.intent, "complaint")
         
     def test_refund_intent(self):
-        self.mock_client.generate_content.return_value = '{"intent": "refund", "confidence": 0.95, "entities": {}}'
+        self.mock_factory.generate_content_with_failover.return_value = '{"intent": "refund", "confidence": 0.95, "entities": {}}'
         result = self.parser.parse_intent("I want a refund")
         self.assertEqual(result.intent, "refund")
         
     def test_general_query_intent(self):
-        self.mock_client.generate_content.return_value = '{"intent": "general_query", "confidence": 0.90, "entities": {}}'
+        self.mock_factory.generate_content_with_failover.return_value = '{"intent": "general_query", "confidence": 0.90, "entities": {}}'
         result = self.parser.parse_intent("Do you sell shoes?")
         self.assertEqual(result.intent, "general_query")
         
     def test_unknown_intent(self):
-        self.mock_client.generate_content.return_value = '{"intent": "unknown", "confidence": 0.50, "entities": {}}'
+        self.mock_factory.generate_content_with_failover.return_value = '{"intent": "unknown", "confidence": 0.50, "entities": {}}'
         result = self.parser.parse_intent("asdfasdf")
         self.assertEqual(result.intent, "unknown")
         
+    def test_general_policy_intent(self):
+        self.mock_factory.generate_content_with_failover.return_value = '{"intent": "general_policy", "confidence": 0.98, "entities": {"policy_topic": "delivery", "response_mode": "standard"}}'
+        result = self.parser.parse_intent("What are delivery charges?")
+        self.assertEqual(result.intent, "general_policy")
+        self.assertEqual(result.entities.policy_topic, "delivery")
+
+    def test_general_policy_negative_regression(self):
+        # Even if a user asks something that looks like policy, but is actually tracking, it should map to tracking.
+        self.mock_factory.generate_content_with_failover.return_value = '{"intent": "order_tracking", "confidence": 0.99, "entities": {}}'
+        result = self.parser.parse_intent("Mera order kidhar hai")
+        self.assertEqual(result.intent, "order_tracking")
+        
     def test_invalid_json(self):
-        self.mock_client.generate_content.return_value = '{intent: greeting, confidence: 0.9}' # missing quotes
+        self.mock_factory.generate_content_with_failover.return_value = '{intent: greeting, confidence: 0.9}' # missing quotes
         with self.assertRaises(IntentParserError) as e:
             self.parser.parse_intent("Hello")
         self.assertIn("Malformed JSON", str(e.exception))
         
     def test_missing_intent_field(self):
-        self.mock_client.generate_content.return_value = '{"confidence": 0.9, "entities": {}}'
+        self.mock_factory.generate_content_with_failover.return_value = '{"confidence": 0.9, "entities": {}}'
         with self.assertRaises(IntentParserError) as e:
             self.parser.parse_intent("Hello")
         self.assertIn("Schema validation failed", str(e.exception))
         
     def test_gemini_api_failure(self):
         from ai.gemini_client import GeminiAPIError
-        self.mock_client.generate_content.side_effect = GeminiAPIError("API Timeout")
+        self.mock_factory.generate_content_with_failover.side_effect = GeminiAPIError("API Timeout")
         with self.assertRaises(IntentParserError) as e:
             self.parser.parse_intent("Hello")
         self.assertIn("API Error", str(e.exception))
