@@ -20,6 +20,15 @@ class LLMAPIError(Exception):
     def __str__(self):
         return f"[{self.provider.upper()}] Status: {self.status_code} | Recoverable: {self.recoverable} | {self.message}"
 
+class RecoverableLLMError(LLMAPIError):
+    def __init__(self, message: str, provider: str = "unknown", status_code: Optional[int] = None, original_exception: Optional[Exception] = None):
+        super().__init__(message, provider, status_code, recoverable=True, original_exception=original_exception)
+
+class UnrecoverableLLMError(LLMAPIError):
+    def __init__(self, message: str, provider: str = "unknown", status_code: Optional[int] = None, original_exception: Optional[Exception] = None):
+        super().__init__(message, provider, status_code, recoverable=False, original_exception=original_exception)
+
+
 class BaseLLMClient(ABC):
     @property
     @abstractmethod

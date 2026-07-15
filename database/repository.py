@@ -10,6 +10,145 @@ class OrderNotFoundError(Exception):
     pass
 
 class OrderRepository:
+    def resolve_to_latest_order_id(self, increment_id: str) -> str:
+        if not increment_id:
+            return increment_id
+        if "-" not in increment_id:
+            child_query = """
+            SELECT c.increment_id 
+            FROM sales_order c
+            JOIN sales_order p ON c.relation_parent_id = p.entity_id
+            WHERE p.increment_id = %s
+            ORDER BY c.entity_id DESC
+            LIMIT 1
+            """
+            try:
+                with DatabaseManager() as conn:
+                    cursor = conn.cursor(dictionary=True)
+                    cursor.execute(child_query, (increment_id,))
+                    res = cursor.fetchone()
+                    cursor.close()
+                    if res:
+                        logger.info(f"Resolved parent order {increment_id} to child order {res['increment_id']}")
+                        return res["increment_id"]
+            except Exception as e:
+                logger.error(f"Error resolving parent order: {e}")
+        return increment_id
+
+    def get_entity_id_by_increment_id(self, increment_id: str) -> Optional[int]:
+        query = "SELECT entity_id FROM sales_order WHERE increment_id = %s"
+        try:
+            with DatabaseManager() as conn:
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute(query, (increment_id,))
+                res = cursor.fetchone()
+                cursor.close()
+                return res["entity_id"] if res else None
+        except Exception:
+            return None
+
+    def get_items_by_entity_id(self, entity_id: int) -> list:
+        query = "SELECT sku, name, qty_ordered FROM sales_order_item WHERE order_id = %s"
+        try:
+            with DatabaseManager() as conn:
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute(query, (entity_id,))
+                res = cursor.fetchall()
+                cursor.close()
+                return res
+        except Exception:
+            return []
+
+    def get_unavailable_items(self, parent_increment_id: str, child_increment_id: str) -> list:
+        parent_entity = self.get_entity_id_by_increment_id(parent_increment_id)
+        child_entity = self.get_entity_id_by_increment_id(child_increment_id)
+        if not parent_entity or not child_entity:
+            return []
+            
+        parent_items = self.get_items_by_entity_id(parent_entity)
+        child_items = self.get_items_by_entity_id(child_entity)
+        
+        child_map = {item['sku']: item['qty_ordered'] for item in child_items}
+        
+        unavailable = []
+        for p_item in parent_items:
+            sku = p_item['sku']
+            name = p_item['name']
+            p_qty = p_item['qty_ordered']
+            
+            c_qty = child_map.get(sku, 0)
+            
+            if p_qty > c_qty:
+                diff_qty = int(p_qty - c_qty)
+                unavailable.append(f"{name} (Qty: {diff_qty})")
+                
+        return unavailable
+
+    def get_payment_method(self, increment_id: str) -> str:
+        """
+        Returns the payment method code for an order.
+        e.g. 'cashondelivery', 'jazzcash', 'bankalfalah', etc.
+        Returns empty string if not found.
+        """
+        query = """
+        SELECT p.method 
+        FROM sales_order o 
+        JOIN sales_order_payment p ON o.entity_id = p.parent_id 
+        WHERE o.increment_id = %s 
+        LIMIT 1
+        """
+        try:
+            with DatabaseManager() as conn:
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute(query, (increment_id,))
+                res = cursor.fetchone()
+                cursor.close()
+                return res["method"] if res else ""
+        except Exception as e:
+            logger.error(f"Error fetching payment method for {increment_id}: {e}")
+            return ""
+
+    def get_refund_status(self, child_increment_id: str) -> Optional[str]:
+        """
+        Checks if a refund has already been initiated for the given child order.
+        Looks in nop_refund_products_info and sales_creditmemo.
+        Returns a human-readable status string, or None if no refund found.
+        """
+        try:
+            with DatabaseManager() as conn:
+                cursor = conn.cursor(dictionary=True)
+                
+                # Check nop_refund_products_info
+                cursor.execute(
+                    "SELECT COUNT(*) as cnt FROM nop_refund_products_info WHERE ordernumber = %s",
+                    (child_increment_id,)
+                )
+                row = cursor.fetchone()
+                if row and row["cnt"] > 0:
+                    cursor.close()
+                    return "in progress"
+                
+                # Check sales_creditmemo (state: 1=open, 2=refunded, 3=cancelled)
+                cursor.execute("""
+                    SELECT cm.state 
+                    FROM sales_creditmemo cm
+                    JOIN sales_order o ON cm.order_id = o.entity_id
+                    WHERE o.increment_id = %s
+                    ORDER BY cm.created_at DESC
+                    LIMIT 1
+                """, (child_increment_id,))
+                row = cursor.fetchone()
+                cursor.close()
+                if row:
+                    state_map = {1: "in progress", 2: "completed", 3: "cancelled"}
+                    return state_map.get(row["state"], "in progress")
+                
+                return None
+        except Exception as e:
+            logger.error(f"Error checking refund status for {child_increment_id}: {e}")
+            return None
+
+    def get_order_by_increment_id(self, increment_id: str) -> Order:
     def _fetch_order_data(self, cursor, identifier, is_increment=True):
         query = """
         SELECT 
@@ -165,3 +304,68 @@ class OrderRepository:
         except Exception as e:
             logger.error(f"Database error while fetching order status {increment_id}: {e}")
             raise RuntimeError(f"Database error: {e}") from e
+
+class ComplaintRepository:
+    def create_complaint_ticket(
+        self, 
+        order_number: str, 
+        entity_id: int, 
+        name: str, 
+        email: str, 
+        phone: str, 
+        subject: str, 
+        complain: str, 
+        complain_type: str
+    ) -> int:
+        query = """
+        INSERT INTO nhd_complain_tickets (
+            order_number, entity_id, customer_name, customer_email, customer_phone, 
+            subject, complain, type, status, action_taken
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'New', '')
+        """
+        try:
+            with DatabaseManager() as conn:
+                logger.info(f"Creating complaint ticket for order {order_number}")
+                cursor = conn.cursor()
+                cursor.execute(query, (order_number, entity_id, name, email, phone, subject, complain, complain_type))
+                conn.commit()
+                ticket_no = cursor.lastrowid
+                cursor.close()
+                logger.info(f"Successfully created complaint ticket #{ticket_no}")
+                return ticket_no
+        except Exception as e:
+            logger.error(f"Database error while creating complaint ticket: {e}")
+            raise RuntimeError(f"Database error: {e}") from e
+
+    def add_ticket_attachment(self, ticket_no: int, image_url: str):
+        query = """
+        INSERT INTO nhd_complain_tickets_attachments_info (
+            ticket_no, image_url, status
+        ) VALUES (%s, %s, 'New')
+        """
+        try:
+            with DatabaseManager() as conn:
+                logger.info(f"Adding attachment for ticket {ticket_no}: {image_url}")
+                cursor = conn.cursor()
+                cursor.execute(query, (ticket_no, image_url))
+                conn.commit()
+                cursor.close()
+                logger.info(f"Successfully added attachment to ticket #{ticket_no}")
+        except Exception as e:
+            logger.error(f"Database error while adding ticket attachment: {e}")
+            raise RuntimeError(f"Database error: {e}") from e
+
+    def has_existing_complaint_type(self, order_number: str, complain_type: str) -> bool:
+        query = "SELECT COUNT(*) as count FROM nhd_complain_tickets WHERE order_number = %s AND type = %s"
+        try:
+            with DatabaseManager() as conn:
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute(query, (order_number, complain_type))
+                result = cursor.fetchone()
+                cursor.close()
+                return (result["count"] > 0) if result else False
+        except Exception as e:
+            logger.error(f"Database error while checking existing complaints: {e}")
+            raise RuntimeError(f"Database error: {e}") from e
+
+

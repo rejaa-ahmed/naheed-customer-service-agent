@@ -2,6 +2,7 @@ import os
 import time
 from google import genai
 from dotenv import load_dotenv
+from typing import Optional
 from utils.logger import get_logger
 from ai.base_client import BaseLLMClient, LLMAPIError
 
@@ -18,11 +19,11 @@ class GeminiClient(BaseLLMClient):
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
             logger.critical("GEMINI_API_KEY is missing from environment variables.")
-            raise LLMAPIError("GEMINI_API_KEY must be set in .env", "gemini", 401, False)
+            raise ValueError("GEMINI_API_KEY is missing from environment variables.")
         
         # Initialize official client
         self.client = genai.Client(api_key=api_key)
-        self.default_model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+        self.default_model = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
         
     def health_check(self) -> bool:
         """
@@ -87,3 +88,7 @@ class GeminiClient(BaseLLMClient):
                 recoverable=is_recoverable,
                 original_exception=e
             ) from e
+
+class GeminiAPIError(LLMAPIError):
+    def __init__(self, message: str, status_code: Optional[int] = None, recoverable: bool = True, original_exception: Optional[Exception] = None):
+        super().__init__(message, provider="gemini", status_code=status_code, recoverable=recoverable, original_exception=original_exception)
