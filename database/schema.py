@@ -1,5 +1,5 @@
-from dataclasses import dataclass
-from typing import Optional
+from dataclasses import dataclass, field
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 @dataclass
@@ -14,3 +14,11 @@ class Order:
     shipping_address: Optional[str] = None
     carrier_code: Optional[str] = None
     tracking_number: Optional[str] = None
+    
+    # Parent-Child Tracking Extensions
+    child_orders: List['Order'] = field(default_factory=list)
+    unavailable_items: List[Dict[str, Any]] = field(default_factory=list)
+    payment_method: Optional[str] = None
+    refund_state: Optional[int] = None
+    refund_amount: Optional[float] = None
+    refund_date: Optional[datetime] = None

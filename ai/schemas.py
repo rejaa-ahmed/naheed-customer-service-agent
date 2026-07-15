@@ -3,10 +3,11 @@ from typing import Dict, Any, Optional
 
 class EntityExtraction(BaseModel):
     order_id: Optional[str] = Field(None, description="The alphanumeric order ID if present")
-    # Extensible for other entities in future flows
+    policy_topic: Optional[str] = Field(None, description="The specific policy topic requested (e.g., delivery, payment)")
+    response_mode: Optional[str] = Field(None, description="The requested response mode: 'standard' or 'complex'")
 
 class IntentResult(BaseModel):
-    intent: str = Field(..., description="The classified intent, e.g., order_tracking, complaint, general_query, greeting, goodbye, refund, unknown")
+    intent: str = Field(..., description="The classified intent, e.g., order_tracking, complaint, general_policy, general_query, greeting, goodbye, refund, unknown")
     confidence: float = Field(..., description="Confidence score from 0.0 to 1.0")
     entities: EntityExtraction = Field(default_factory=EntityExtraction, description="Extracted entities from the message")
     tool: Optional[str] = Field(None, description="The recommended tool to invoke")
