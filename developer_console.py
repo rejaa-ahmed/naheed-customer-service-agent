@@ -64,7 +64,21 @@ with chat_col:
             st.markdown(msg["content"])
             
     # Input
-    if user_input := st.chat_input("Type your message here..."):
+    user_input = st.chat_input("Type your message here...")
+    
+    current_state = st.session_state.state_manager.get_state(st.session_state.session_id)
+    if current_state.entities.get("show_upload") or current_state.current_stage == "waiting_for_image":
+        uploaded_file = st.file_uploader("Upload wrong item image", type=["png", "jpg", "jpeg"])
+        if uploaded_file is not None:
+            if st.button("Submit Image"):
+                import os
+                os.makedirs("static/uploads", exist_ok=True)
+                file_path = os.path.join("static", "uploads", uploaded_file.name)
+                with open(file_path, "wb") as f:
+                    f.write(uploaded_file.getbuffer())
+                user_input = f"[Image Uploaded: /static/uploads/{uploaded_file.name}]"
+
+    if user_input:
         # Append user message
         st.session_state.messages.append({"role": "user", "content": user_input})
         with st.chat_message("user"):
@@ -108,6 +122,29 @@ with chat_col:
                     order_id = flow_response.tool_args.get("order_id")
                     service_response = st.session_state.order_service.track_order(order_id)
                     response_text = service_response.get("message", "We encountered an issue checking your order.")
+                elif flow_response.tool_request == "create_complaint":
+                    order_id = flow_response.tool_args.get("order_id")
+                    complaint_type = flow_response.tool_args.get("complaint_type")
+                    details = flow_response.tool_args.get("details")
+                    image_url = flow_response.tool_args.get("image_url")
+                    
+                    if "complaint_service" not in st.session_state:
+                        from services.complaint_service import ComplaintService
+                        st.session_state.complaint_service = ComplaintService()
+                        
+                    service_response = st.session_state.complaint_service.create_complaint(
+                        order_id=order_id,
+                        complaint_type=complaint_type,
+                        details=details,
+                        image_url=image_url
+                    )
+                    ticket_msg = service_response.get("message", "")
+                    # Preserve the flow's rich response (e.g. COD/refund status message)
+                    # and append the ticket confirmation instead of overwriting it.
+                    if response_text:
+                        response_text = f"{response_text}\n\n{ticket_msg}"
+                    else:
+                        response_text = ticket_msg
                     
                 latency = time.time() - start_time
                 

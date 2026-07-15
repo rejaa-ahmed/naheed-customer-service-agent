@@ -82,7 +82,7 @@ class TestConversationManager(unittest.TestCase):
     def test_complaint_response(self):
         self.mock_router.route.return_value = IntentResult(intent="complaint", confidence=0.9)
         response = self.manager.process_message("I want to complain")
-        self.assertIn("currently under development", response)
+        self.assertIn("I can register your complaint", response)
 
 if __name__ == '__main__':
     unittest.main()

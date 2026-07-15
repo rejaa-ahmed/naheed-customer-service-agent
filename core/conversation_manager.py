@@ -5,6 +5,7 @@ from core.state_manager import StateManager
 from core.flow_manager import FlowManager
 from ai.intent_parser import IntentParser, IntentParserError
 from services.order_service import OrderService
+from services.complaint_service import ComplaintService
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -14,11 +15,12 @@ class ConversationManager:
     Manages the flow of the conversation by utilizing the IntentRouter
     to determine the user's intent, and delegating business logic to Services.
     """
-    def __init__(self, parser: IntentParser = None, router: IntentRouter = None, order_service: OrderService = None, state_manager: StateManager = None, flow_manager: FlowManager = None):
+    def __init__(self, parser: IntentParser = None, router: IntentRouter = None, order_service: OrderService = None, complaint_service: ComplaintService = None, state_manager: StateManager = None, flow_manager: FlowManager = None):
         # Dependency injection allows easy mocking in tests
         self.parser = parser or IntentParser()
         self.router = router or IntentRouter()
         self.order_service = order_service or OrderService()
+        self.complaint_service = complaint_service or ComplaintService()
         self.state_manager = state_manager or StateManager()
         self.flow_manager = flow_manager or FlowManager()
         
@@ -97,6 +99,25 @@ class ConversationManager:
             logger.info(f"Routing to OrderService for Order ID: {order_id}")
             service_response = self.order_service.track_order(order_id)
             response_text = service_response.get("message", "We encountered an issue checking your order.")
+        elif flow_response.tool_request == "create_complaint":
+            order_id = flow_response.tool_args.get("order_id")
+            complaint_type = flow_response.tool_args.get("complaint_type")
+            details = flow_response.tool_args.get("details")
+            image_url = flow_response.tool_args.get("image_url")
+            logger.info(f"Routing to ComplaintService for Order ID: {order_id}")
+            service_response = self.complaint_service.create_complaint(
+                order_id=order_id,
+                complaint_type=complaint_type,
+                details=details,
+                image_url=image_url
+            )
+            ticket_msg = service_response.get("message", "")
+            # If the flow already built a rich response (e.g. COD/refund status message),
+            # append the ticket confirmation to it rather than replacing it.
+            if response_text:
+                response_text = f"{response_text}\n\n{ticket_msg}"
+            else:
+                response_text = ticket_msg
             
         self.state_manager.add_message(session_id, "assistant", response_text)
         

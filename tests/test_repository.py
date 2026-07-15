@@ -27,7 +27,15 @@ class TestOrderRepository(unittest.TestCase):
         mock_cursor.fetchone.return_value = {
             "entity_id": 1001,
             "increment_id": "100000001",
-            "status": "processing"
+            "status": "processing",
+            "delivery_due_date": "2026-07-14 12:00:00",
+            "city": "Karachi",
+            "firstname": "John",
+            "lastname": "Doe",
+            "telephone": "12345678",
+            "street": "Main Street",
+            "courier": "leopards",
+            "cn_number": "CN12345"
         }
         
         order = self.repo.get_order_by_increment_id("100000001")
