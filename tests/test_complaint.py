@@ -88,8 +88,8 @@ class TestComplaintFeature(unittest.TestCase):
         response = self.flow.handle(intent, self.state)
         
         self.assertEqual(response.status, "waiting_for_input")
-        self.assertIn("7-day return policy", response.response)
-        self.assertEqual(response.updated_state["current_stage"], "waiting_for_resolution")
+        self.assertIn("describe which items you did", response.response)
+        self.assertEqual(response.updated_state["current_stage"], "waiting_for_missing_details")
 
     def test_flow_refund_sub_category_wrong(self):
         self.state.current_stage = "waiting_for_refund_sub_category"
@@ -215,19 +215,39 @@ class TestComplaintFeature(unittest.TestCase):
         self.mock_order_repo.resolve_to_latest_order_id.side_effect = None
         self.mock_order_repo.resolve_to_latest_order_id.return_value = "2000096085-1"
         self.mock_order_repo.get_unavailable_items.return_value = ["Item X (Qty: 1)"]
+        self.mock_order_repo.get_payment_method.return_value = "Cash"
+        self.mock_order_repo.get_refund_status.return_value = "not initiated"
         
         intent = IntentResult(intent="complaint", confidence=0.9, entities={"order_id": "2000096085"})
         self.state.conversation_history.append({"role": "user", "content": "complain for 2000096085"})
         
+        # 1. Trigger flow (stage: None)
         response = self.flow.handle(intent, self.state)
-        
         self.assertEqual(response.status, "waiting_for_input")
-        self.assertIn("are missing", response.response)
-        self.assertIn("Item X (Qty: 1)", response.response)
+        self.assertIn("Please select the category", response.response)
         self.assertEqual(response.updated_state["entities"]["order_id"], "2000096085-1")
-        self.assertEqual(response.updated_state["current_stage"], "waiting_for_resolution")
-
-        # Now test going to a different issue
+        self.assertEqual(response.updated_state["entities"]["parent_order_id"], "2000096085")
+        self.assertEqual(response.updated_state["current_stage"], "waiting_for_category")
+        
+        # 2. Select Refund (stage: waiting_for_category)
+        self.state.current_stage = "waiting_for_category"
+        self.state.entities = response.updated_state["entities"]
+        self.state.conversation_history.append({"role": "user", "content": "Refund"})
+        response = self.flow.handle(intent, self.state)
+        self.assertEqual(response.status, "waiting_for_input")
+        self.assertEqual(response.updated_state["current_stage"], "waiting_for_refund_sub_category")
+        
+        # 3. Select Missing Item (stage: waiting_for_refund_sub_category)
+        self.state.current_stage = "waiting_for_refund_sub_category"
+        self.state.entities = response.updated_state["entities"]
+        self.state.conversation_history.append({"role": "user", "content": "Missing Item"})
+        response = self.flow.handle(intent, self.state)
+        self.assertEqual(response.status, "waiting_for_input")
+        self.assertIn("missing at dispatch", response.response)
+        self.assertIn("Item X (Qty: 1)", response.response)
+        self.assertEqual(response.updated_state["current_stage"], "waiting_for_missing_details")
+        
+        # Now test going to a different issue from waiting_for_resolution stage
         self.state.current_stage = "waiting_for_resolution"
         self.state.entities = response.updated_state["entities"]
         self.state.conversation_history.append({"role": "user", "content": "different issue"})

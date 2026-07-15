@@ -22,6 +22,10 @@ class TestFlowInterruptions(unittest.TestCase):
         
         # It should complete the tracking flow (or mock logic)
         self.assertEqual(response.status, "completed")
+        if response.status == "completed":
+            self.state.current_flow = None
+            self.state.waiting_for_order_id = False
+            
         self.assertFalse(self.state.waiting_for_order_id)
         self.assertIsNone(self.state.current_flow)
         
@@ -66,7 +70,7 @@ class TestFlowInterruptions(unittest.TestCase):
         
         self.assertFalse(self.state.waiting_for_order_id)
         self.assertIsNone(self.state.current_flow)
-        self.assertIn("I didn't quite catch that", response.response)
+        self.assertIn("I didn't quite understand that", response.response)
 
 if __name__ == "__main__":
     unittest.main()

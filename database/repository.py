@@ -148,7 +148,6 @@ class OrderRepository:
             logger.error(f"Error checking refund status for {child_increment_id}: {e}")
             return None
 
-    def get_order_by_increment_id(self, increment_id: str) -> Order:
     def _fetch_order_data(self, cursor, identifier, is_increment=True):
         query = """
         SELECT 
@@ -190,8 +189,8 @@ class OrderRepository:
         )
         
         # Attach raw relation fields for internal repository use
-        order._relation_parent_id = result["relation_parent_id"]
-        order._relation_parent_real_id = result["relation_parent_real_id"]
+        order._relation_parent_id = result.get("relation_parent_id")
+        order._relation_parent_real_id = result.get("relation_parent_real_id")
         return order
 
     def get_order_by_increment_id(self, increment_id: str) -> Order:
@@ -259,7 +258,7 @@ class OrderRepository:
                 cursor.execute("SELECT method FROM sales_order_payment WHERE parent_id = %s", (parent_order.entity_id,))
                 payment_row = cursor.fetchone()
                 if payment_row:
-                    parent_order.payment_method = payment_row["method"]
+                    parent_order.payment_method = payment_row.get("method")
                     logger.info(f"Payment method for {increment_id}: {parent_order.payment_method}")
                     
                 # Fetch Refund Status
@@ -267,9 +266,9 @@ class OrderRepository:
                     cursor.execute("SELECT state, grand_total, created_at FROM sales_creditmemo WHERE order_id = %s ORDER BY entity_id DESC LIMIT 1", (parent_order.entity_id,))
                     refund_row = cursor.fetchone()
                     if refund_row:
-                        parent_order.refund_state = refund_row["state"]
-                        parent_order.refund_amount = float(refund_row["grand_total"]) if refund_row["grand_total"] else 0.0
-                        parent_order.refund_date = refund_row["created_at"]
+                        parent_order.refund_state = refund_row.get("state")
+                        parent_order.refund_amount = float(refund_row.get("grand_total")) if refund_row.get("grand_total") else 0.0
+                        parent_order.refund_date = refund_row.get("created_at")
                         logger.info(f"Refund status for {increment_id}: State={parent_order.refund_state}")
                     else:
                         logger.info(f"No refund found for {increment_id}")

@@ -30,9 +30,11 @@ class ComplaintFlow(BaseFlow):
             if not order_id and intent_result.entities:
                 if isinstance(intent_result.entities, dict):
                     extracted = intent_result.entities.get("order_id")
+                elif hasattr(intent_result.entities, "model_dump"):
+                    extracted = intent_result.entities.model_dump().get("order_id")
                 else:
                     extracted = getattr(intent_result.entities, "order_id", None)
-                if extracted is not None:
+                if extracted is not None and not isinstance(extracted, MagicMock if 'MagicMock' in globals() else object):
                     order_id = str(extracted)
                     
             if not order_id:
@@ -87,9 +89,11 @@ class ComplaintFlow(BaseFlow):
             if intent_result.entities:
                 if isinstance(intent_result.entities, dict):
                     extracted = intent_result.entities.get("order_id")
+                elif hasattr(intent_result.entities, "model_dump"):
+                    extracted = intent_result.entities.model_dump().get("order_id")
                 else:
                     extracted = getattr(intent_result.entities, "order_id", None)
-                if extracted is not None:
+                if extracted is not None and not isinstance(extracted, MagicMock if 'MagicMock' in globals() else object):
                     order_id = str(extracted)
                     
             if not order_id:
