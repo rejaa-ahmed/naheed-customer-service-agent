@@ -149,11 +149,14 @@ class OrderRepository:
             return None
 
     def get_order_by_increment_id(self, increment_id: str) -> Order:
+    def _fetch_order_data(self, cursor, identifier, is_increment=True):
         query = """
         SELECT 
             o.entity_id, 
             o.increment_id, 
             o.status,
+            o.relation_parent_id,
+            o.relation_parent_real_id,
             a.delivery_due_date,
             a.courier,
             a.cn_number,
@@ -165,34 +168,114 @@ class OrderRepository:
         FROM sales_order o
         LEFT JOIN nhd_sales_order_additionals a ON o.entity_id = a.order_id
         LEFT JOIN sales_order_address addr ON o.entity_id = addr.parent_id AND addr.address_type = 'shipping'
-        WHERE o.increment_id = %s
+        WHERE {} = %s
         """
+        where_clause = "o.increment_id" if is_increment else "o.entity_id"
+        cursor.execute(query.format(where_clause), (identifier,))
+        result = cursor.fetchone()
+        if not result:
+            return None
+            
+        order = Order(
+            entity_id=result["entity_id"],
+            increment_id=result["increment_id"],
+            status=result["status"],
+            estimated_delivery_datetime=result["delivery_due_date"],
+            shipping_city=result["city"],
+            recipient_name=f"{result['firstname'] or ''} {result['lastname'] or ''}".strip() if result['firstname'] or result['lastname'] else None,
+            recipient_phone=result["telephone"],
+            shipping_address=result["street"],
+            carrier_code=result["courier"],
+            tracking_number=result["cn_number"]
+        )
+        
+        # Attach raw relation fields for internal repository use
+        order._relation_parent_id = result["relation_parent_id"]
+        order._relation_parent_real_id = result["relation_parent_real_id"]
+        return order
+
+    def get_order_by_increment_id(self, increment_id: str) -> Order:
         try:
             with DatabaseManager() as conn:
                 logger.info(f"Fetching order with increment_id: {increment_id}")
                 cursor = conn.cursor(dictionary=True)
-                cursor.execute(query, (increment_id,))
-                result = cursor.fetchone()
-                cursor.close()
                 
-                if not result:
+                initial_order = self._fetch_order_data(cursor, increment_id, is_increment=True)
+                if not initial_order:
                     logger.warning(f"Order not found for increment_id: {increment_id}")
                     raise OrderNotFoundError(f"Order with increment_id {increment_id} not found.")
+
+                # Detect if the entered order is a parent or child
+                if getattr(initial_order, "_relation_parent_id", None):
+                    # It's a child order. Resolve parent.
+                    parent_id = initial_order._relation_parent_id
+                    logger.info(f"Entered order {increment_id} is a child. Resolving parent ID {parent_id}")
+                    parent_order = self._fetch_order_data(cursor, parent_id, is_increment=False)
+                    if not parent_order:
+                        parent_order = initial_order
+                else:
+                    parent_order = initial_order
+
+                logger.info(f"Successfully retrieved parent order: {parent_order.increment_id}")
+                
+                # Check for ALL child orders
+                cursor.execute("SELECT entity_id FROM sales_order WHERE relation_parent_id = %s", (parent_order.entity_id,))
+                child_rows = cursor.fetchall()
+                logger.info(f"Parent order detection: found {len(child_rows)} child orders for {parent_order.increment_id}")
+                
+                for row in child_rows:
+                    child_order = self._fetch_order_data(cursor, row["entity_id"], is_increment=False)
+                    if child_order:
+                        parent_order.child_orders.append(child_order)
+                
+                if parent_order.child_orders:
+                    # Fetch unavailable items (comparing parent to ALL child orders)
+                    child_entity_ids = [str(c.entity_id) for c in parent_order.child_orders]
+                    child_ids_str = ",".join(child_entity_ids)
                     
-                order = Order(
-                    entity_id=result["entity_id"],
-                    increment_id=result["increment_id"],
-                    status=result["status"],
-                    estimated_delivery_datetime=result["delivery_due_date"],
-                    shipping_city=result["city"],
-                    recipient_name=f"{result['firstname'] or ''} {result['lastname'] or ''}".strip() if result['firstname'] or result['lastname'] else None,
-                    recipient_phone=result["telephone"],
-                    shipping_address=result["street"],
-                    carrier_code=result["courier"],
-                    tracking_number=result["cn_number"]
-                )
-                logger.info(f"Successfully retrieved order: {increment_id}")
-                return order
+                    logger.info(f"Parent Order ID: {parent_order.increment_id}")
+                    logger.info(f"Child Order IDs: {[c.increment_id for c in parent_order.child_orders]}")
+                    
+                    query = f"""
+                        SELECT p.name, (p.qty_ordered - COALESCE(c.child_qty, 0)) as unavailable_qty, p.sku, p.qty_ordered as parent_qty, c.child_qty
+                        FROM sales_order_item p
+                        LEFT JOIN (
+                            SELECT sku, SUM(qty_ordered) as child_qty
+                            FROM sales_order_item
+                            WHERE order_id IN ({child_ids_str}) AND parent_item_id IS NULL
+                            GROUP BY sku
+                        ) c ON p.sku = c.sku
+                        WHERE p.order_id = %s AND p.parent_item_id IS NULL
+                        HAVING unavailable_qty > 0
+                    """
+                    cursor.execute(query, (parent_order.entity_id,))
+                    for item in cursor.fetchall():
+                        parent_order.unavailable_items.append({"name": item["name"], "qty": float(item["unavailable_qty"])})
+                        logger.info(f"Unavailable calculation for SKU {item['sku']}: Parent Qty={item['parent_qty']}, Child Qty={item['child_qty']}, Unavailable={item['unavailable_qty']}")
+                        
+                    logger.info(f"Final unavailable_items list: {parent_order.unavailable_items}")
+                    
+                # Fetch Payment Method
+                cursor.execute("SELECT method FROM sales_order_payment WHERE parent_id = %s", (parent_order.entity_id,))
+                payment_row = cursor.fetchone()
+                if payment_row:
+                    parent_order.payment_method = payment_row["method"]
+                    logger.info(f"Payment method for {increment_id}: {parent_order.payment_method}")
+                    
+                # Fetch Refund Status
+                if parent_order.payment_method and "cashondelivery" not in parent_order.payment_method.lower() and "cod" not in parent_order.payment_method.lower():
+                    cursor.execute("SELECT state, grand_total, created_at FROM sales_creditmemo WHERE order_id = %s ORDER BY entity_id DESC LIMIT 1", (parent_order.entity_id,))
+                    refund_row = cursor.fetchone()
+                    if refund_row:
+                        parent_order.refund_state = refund_row["state"]
+                        parent_order.refund_amount = float(refund_row["grand_total"]) if refund_row["grand_total"] else 0.0
+                        parent_order.refund_date = refund_row["created_at"]
+                        logger.info(f"Refund status for {increment_id}: State={parent_order.refund_state}")
+                    else:
+                        logger.info(f"No refund found for {increment_id}")
+                
+                cursor.close()
+                return parent_order
         except OrderNotFoundError:
             raise
         except Exception as e:

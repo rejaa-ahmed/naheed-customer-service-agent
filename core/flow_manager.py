@@ -7,6 +7,7 @@ from core.state_manager import ConversationState
 from flows.order_tracking import OrderTrackingFlow
 from flows.complaint import ComplaintFlow
 from flows.refund import RefundFlow
+from flows.general_policy import GeneralPolicyFlow
 from flows.general_query import GeneralQueryFlow
 from flows.greeting import GreetingFlow
 from flows.goodbye import GoodbyeFlow
@@ -22,6 +23,7 @@ class FlowManager:
             "order_tracking": OrderTrackingFlow(),
             "complaint": ComplaintFlow(),
             "refund": RefundFlow(),
+            "general_policy": GeneralPolicyFlow(),
             "general_query": GeneralQueryFlow(),
             "greeting": GreetingFlow(),
             "goodbye": GoodbyeFlow(),

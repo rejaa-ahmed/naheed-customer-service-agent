@@ -52,6 +52,18 @@ class TestIntentParser(unittest.TestCase):
         result = self.parser.parse_intent("asdfasdf")
         self.assertEqual(result.intent, "unknown")
         
+    def test_general_policy_intent(self):
+        self.mock_factory.generate_content_with_failover.return_value = '{"intent": "general_policy", "confidence": 0.98, "entities": {"policy_topic": "delivery", "response_mode": "standard"}}'
+        result = self.parser.parse_intent("What are delivery charges?")
+        self.assertEqual(result.intent, "general_policy")
+        self.assertEqual(result.entities.policy_topic, "delivery")
+
+    def test_general_policy_negative_regression(self):
+        # Even if a user asks something that looks like policy, but is actually tracking, it should map to tracking.
+        self.mock_factory.generate_content_with_failover.return_value = '{"intent": "order_tracking", "confidence": 0.99, "entities": {}}'
+        result = self.parser.parse_intent("Mera order kidhar hai")
+        self.assertEqual(result.intent, "order_tracking")
+        
     def test_invalid_json(self):
         self.mock_factory.generate_content_with_failover.return_value = '{intent: greeting, confidence: 0.9}' # missing quotes
         with self.assertRaises(IntentParserError) as e:

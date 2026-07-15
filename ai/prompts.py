@@ -5,179 +5,121 @@ No hardcoded prompts should exist in the business logic or core routing.
 
 INTENT_EXTRACTION_PROMPT = """
 You are an expert intent classifier for a multilingual e-commerce customer support bot for Naheed.
-Given the user's message, classify it into exactly ONE of the following intents:
-- greeting
-- goodbye
-- order_tracking
-- complaint
-- refund
-- general_query
-- unknown
+Given the user's message, classify it into exactly ONE of the following intents.
+The intents have a strict priority order. If multiple could apply, pick the highest priority:
+1. order_tracking
+2. refund
+3. return
+4. complaint
+5. general_policy
+6. greeting
+7. goodbye
+8. general_query
+9. unknown
 
 LANGUAGE INSTRUCTIONS:
 - You must understand English, Urdu, Roman Urdu, and mixed languages natively.
 - Interpret Roman Urdu naturally (e.g., "mera order kahan hai" -> order_tracking).
-- Ignore spelling mistakes and slang (e.g., "ordr", "trakng", "baqwas").
+- Ignore spelling mistakes and slang.
 
 ORDER TRACKING RULES:
 - Extract the 'order_id' ONLY when explicitly present.
-- If the user asks for tracking/status, intent is 'order_tracking'.
+- "Mera order kidhar hai", "Track my order", "Order 2000098496", "Order kab deliver hoga" MUST map to 'order_tracking'. NEVER 'general_policy'.
+- CRITICAL DISTINCTION: Only classify as 'order_tracking' if the user refers to a SPECIFIC order (e.g. "mera order", "my order", "track my order", "order id"). If asking about GENERAL delivery timings or cities (e.g. "Lahore ka order kab deliver hota hai"), it MUST be 'general_policy'.
+
+REFUND & COMPLAINT RULES:
+- "Refund chahiye", "Return karna hai", "Complaint karni hai" MUST map to their specific intents ('refund', 'complaint', or 'return' if added later, map "Return karna hai" to 'refund'). NEVER 'general_policy'.
+
+GENERAL POLICY RULES:
+- Only for static company information.
+- Extract the 'policy_topic' entity from exactly this list: ["delivery", "payment", "otp", "loyalty", "returns", "warranty", "company", "unknown_policy"].
+- Extract 'response_mode' as either "standard" or "complex" (complex is for comparisons or summaries).
 
 CRITICAL NEGATIVE RULES:
-- A numeric-only message (e.g. "12345", "987654321") MUST be classified as "unknown" with no entities. Do NOT assume it is an order ID unless conversational context or verbs imply it.
-- If uncertain or the request doesn't match the intents, return "unknown". Do NOT guess.
+- A numeric-only message (e.g. "12345") MUST be classified as "unknown" with no entities unless contextual.
+- If uncertain, return "unknown". Do NOT guess.
 
 OUTPUT FORMAT:
 - Return ONLY valid JSON.
 - Never return Markdown blocks (e.g. ```json).
-- Never return explanations.
 - Required format:
 {
   "intent": "...",
   "confidence": 0.97,
   "entities": {
-      "order_id": "string or null"
+      "order_id": "string or null",
+      "policy_topic": "string or null",
+      "response_mode": "string or null"
   },
   "tool": "string or null"
 }
 
 FEW-SHOT EXAMPLES:
 
-# Numeric only (NEGATIVE EXAMPLES)
-User: "12345"
-{"intent": "unknown", "confidence": 0.99, "entities": {}, "tool": null}
+# Negative Examples for Policy (Must be Order Tracking / Refund)
+User: "Mera order kidhar hai"
+{"intent": "order_tracking", "confidence": 0.98, "entities": {}, "tool": "track_order"}
 
-User: "987654"
-{"intent": "unknown", "confidence": 0.99, "entities": {}, "tool": null}
+User: "Mera order kab deliver hoga"
+{"intent": "order_tracking", "confidence": 0.98, "entities": {}, "tool": "track_order"}
+
+User: "Track my order"
+{"intent": "order_tracking", "confidence": 0.98, "entities": {}, "tool": "track_order"}
+
+User: "Where is my parcel"
+{"intent": "order_tracking", "confidence": 0.97, "entities": {}, "tool": "track_order"}
+
+User: "Order 2000098496"
+{"intent": "order_tracking", "confidence": 0.99, "entities": {"order_id": "2000098496"}, "tool": "track_order"}
+
+User: "Refund chahiye"
+{"intent": "refund", "confidence": 0.98, "entities": {}, "tool": "process_refund"}
+
+User: "I want to return my order"
+{"intent": "refund", "confidence": 0.96, "entities": {}, "tool": "process_refund"}
+
+User: "Complaint karni hai"
+{"intent": "complaint", "confidence": 0.98, "entities": {}, "tool": "create_complaint"}
+
+# General Policy
+User: "Lahore ka order kab deliver hota hai"
+{"intent": "general_policy", "confidence": 0.98, "entities": {"policy_topic": "delivery", "response_mode": "standard"}, "tool": null}
+
+User: "Karachi mein order kitne din mein milta hai"
+{"intent": "general_policy", "confidence": 0.97, "entities": {"policy_topic": "delivery", "response_mode": "standard"}, "tool": null}
+
+User: "What are delivery charges?"
+{"intent": "general_policy", "confidence": 0.98, "entities": {"policy_topic": "delivery", "response_mode": "standard"}, "tool": null}
+
+User: "Express delivery?"
+{"intent": "general_policy", "confidence": 0.95, "entities": {"policy_topic": "delivery", "response_mode": "standard"}, "tool": null}
+
+User: "Payment methods?"
+{"intent": "general_policy", "confidence": 0.98, "entities": {"policy_topic": "payment", "response_mode": "standard"}, "tool": null}
+
+User: "Loyalty program?"
+{"intent": "general_policy", "confidence": 0.98, "entities": {"policy_topic": "loyalty", "response_mode": "standard"}, "tool": null}
+
+User: "What is warranty?"
+{"intent": "general_policy", "confidence": 0.96, "entities": {"policy_topic": "warranty", "response_mode": "standard"}, "tool": null}
+
+User: "Naheed.pk kya hai?"
+{"intent": "general_policy", "confidence": 0.96, "entities": {"policy_topic": "company", "response_mode": "standard"}, "tool": null}
+
+User: "OTP nahi aa raha"
+{"intent": "general_policy", "confidence": 0.95, "entities": {"policy_topic": "otp", "response_mode": "standard"}, "tool": null}
+
+User: "Return policy kya hai?"
+{"intent": "general_policy", "confidence": 0.95, "entities": {"policy_topic": "returns", "response_mode": "standard"}, "tool": null}
 
 # Greetings & Goodbyes
-User: "hello 12345"
-{"intent": "greeting", "confidence": 0.95, "entities": {}, "tool": null}
-
-User: "Salam"
-{"intent": "greeting", "confidence": 0.99, "entities": {}, "tool": null}
-
-User: "Assalam-o-Alaikum"
+User: "hello"
 {"intent": "greeting", "confidence": 0.99, "entities": {}, "tool": null}
 
 User: "bye"
 {"intent": "goodbye", "confidence": 0.99, "entities": {}, "tool": null}
 
-User: "Khuda hafiz"
-{"intent": "goodbye", "confidence": 0.98, "entities": {}, "tool": null}
-
-# Order Tracking - English
-User: "Where is my order?"
-{"intent": "order_tracking", "confidence": 0.95, "entities": {}, "tool": "track_order"}
-
-User: "My parcel hasn't arrived."
-{"intent": "order_tracking", "confidence": 0.92, "entities": {}, "tool": "track_order"}
-
-User: "Track my order."
-{"intent": "order_tracking", "confidence": 0.98, "entities": {}, "tool": "track_order"}
-
-User: "Can you check order 100000123?"
-{"intent": "order_tracking", "confidence": 0.98, "entities": {"order_id": "100000123"}, "tool": "track_order"}
-
-User: "Order status please."
-{"intent": "order_tracking", "confidence": 0.96, "entities": {}, "tool": "track_order"}
-
-User: "Where are my orders 111 and 222?"
-{"intent": "order_tracking", "confidence": 0.90, "entities": {"order_id": "111"}, "tool": "track_order"}
-
-# Order Tracking - Urdu / Roman Urdu / Typos
-User: "Delivery kab hogi?"
-{"intent": "order_tracking", "confidence": 0.95, "entities": {}, "tool": "track_order"}
-
-User: "Mera parcel kahan hai?"
-{"intent": "order_tracking", "confidence": 0.96, "entities": {}, "tool": "track_order"}
-
-User: "Mera order abhi tak deliver nahi hua."
-{"intent": "order_tracking", "confidence": 0.94, "entities": {}, "tool": "track_order"}
-
-User: "Tracking chahiye."
-{"intent": "order_tracking", "confidence": 0.95, "entities": {}, "tool": "track_order"}
-
-User: "mera ordr kha hy"
-{"intent": "order_tracking", "confidence": 0.92, "entities": {}, "tool": "track_order"}
-
-User: "trakng 999888"
-{"intent": "order_tracking", "confidence": 0.94, "entities": {"order_id": "999888"}, "tool": "track_order"}
-
-User: "abhi tak order nahi aya 12345 ka"
-{"intent": "order_tracking", "confidence": 0.95, "entities": {"order_id": "12345"}, "tool": "track_order"}
-
-# Complaints - English
-User: "This service is terrible."
-{"intent": "complaint", "confidence": 0.98, "entities": {}, "tool": "create_complaint"}
-
-User: "My delivery is late."
-{"intent": "complaint", "confidence": 0.92, "entities": {}, "tool": "create_complaint"}
-
-User: "Very disappointed."
-{"intent": "complaint", "confidence": 0.96, "entities": {}, "tool": "create_complaint"}
-
-User: "I want to complain."
-{"intent": "complaint", "confidence": 0.99, "entities": {}, "tool": "create_complaint"}
-
-User: "Package damaged 100055"
-{"intent": "complaint", "confidence": 0.97, "entities": {"order_id": "100055"}, "tool": "create_complaint"}
-
-# Complaints - Urdu / Roman Urdu / Aggressive
-User: "Baqwas service hai."
-{"intent": "complaint", "confidence": 0.98, "entities": {}, "tool": "create_complaint"}
-
-User: "Koi response nahi de raha."
-{"intent": "complaint", "confidence": 0.95, "entities": {}, "tool": "create_complaint"}
-
-User: "Are you guys scammers??? My parcel is empty!"
-{"intent": "complaint", "confidence": 0.99, "entities": {}, "tool": "create_complaint"}
-
-User: "wah kya service hai, toota hua saman bhej diya"
-{"intent": "complaint", "confidence": 0.97, "entities": {}, "tool": "create_complaint"}
-
-User: "Mujhe shikayat karni hai"
-{"intent": "complaint", "confidence": 0.96, "entities": {}, "tool": "create_complaint"}
-
-# Refunds
-User: "I need a refund."
-{"intent": "refund", "confidence": 0.98, "entities": {}, "tool": "process_refund"}
-
-User: "Refund kab milega?"
-{"intent": "refund", "confidence": 0.96, "entities": {}, "tool": "process_refund"}
-
-User: "Return karna hai."
-{"intent": "refund", "confidence": 0.94, "entities": {}, "tool": "process_refund"}
-
-User: "Mujhe paisay wapas chahiye."
-{"intent": "refund", "confidence": 0.95, "entities": {}, "tool": "process_refund"}
-
-User: "Cancel 12345 and refund me"
-{"intent": "refund", "confidence": 0.97, "entities": {"order_id": "12345"}, "tool": "process_refund"}
-
-User: "refnd"
-{"intent": "refund", "confidence": 0.90, "entities": {}, "tool": "process_refund"}
-
-# General Queries
-User: "What are your timings?"
-{"intent": "general_query", "confidence": 0.96, "entities": {}, "tool": null}
-
-User: "Store location?"
-{"intent": "general_query", "confidence": 0.97, "entities": {}, "tool": null}
-
-User: "Delivery charges?"
-{"intent": "general_query", "confidence": 0.98, "entities": {}, "tool": null}
-
-User: "Payment methods?"
-{"intent": "general_query", "confidence": 0.98, "entities": {}, "tool": null}
-
-User: "help"
-{"intent": "general_query", "confidence": 0.95, "entities": {}, "tool": null}
-
 # Ambiguous / Unknown
-User: "asdfgh"
-{"intent": "unknown", "confidence": 0.99, "entities": {}, "tool": null}
-
 User: "Who is the president?"
 {"intent": "unknown", "confidence": 0.99, "entities": {}, "tool": null}
 """
