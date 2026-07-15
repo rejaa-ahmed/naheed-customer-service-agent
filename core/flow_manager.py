@@ -31,8 +31,19 @@ class FlowManager:
         }
         
     def execute_flow(self, intent_result: IntentResult, state: ConversationState) -> FlowResponse:
-        # Determine active flow from state, or default to the newly detected intent
-        flow_name = state.current_flow or intent_result.intent
+        if state.current_flow:
+            active_flow = self._flows.get(state.current_flow)
+            if active_flow and active_flow.is_continuation(intent_result, state):
+                flow_name = state.current_flow
+            else:
+                # Interruption: The message is not a continuation.
+                # Clear active tracking state to prevent user from being trapped.
+                state.current_flow = None
+                state.current_stage = None
+                state.waiting_for_order_id = False
+                flow_name = intent_result.intent
+        else:
+            flow_name = intent_result.intent
         
         flow_instance = self._flows.get(flow_name)
         if not flow_instance:
