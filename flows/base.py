@@ -14,3 +14,10 @@ class BaseFlow:
     """Interface for all conversational flows."""
     def handle(self, intent_result: IntentResult, state: ConversationState) -> FlowResponse:
         raise NotImplementedError("Each flow must implement handle()")
+        
+    def is_continuation(self, intent_result: IntentResult, state: ConversationState) -> bool:
+        """
+        Determines whether an incoming message should be treated as a continuation
+        of this active flow, or if it should be interrupted.
+        """
+        return False
