@@ -12,6 +12,10 @@ class ConversationState(BaseModel):
     entities: Dict[str, Any] = Field(default_factory=dict)
     last_assistant_message: Optional[str] = None
     timestamp: float = Field(default_factory=time.time)
+    # AI-judged priority ("high"/"low") and mood ("happy"/"sad") from the customer's
+    # most recent message. Refreshed on every turn by the IntentParser/Router.
+    priority: str = "low"
+    mood: str = "happy"
 
 class StateManager:
     def __init__(self, timeout_seconds: int = 300):

@@ -39,6 +39,13 @@ CRITICAL NEGATIVE RULES:
 - A numeric-only message (e.g. "12345") MUST be classified as "unknown" with no entities unless contextual.
 - If uncertain, return "unknown". Do NOT guess.
 
+CUSTOMER PRIORITY & MOOD CLASSIFICATION:
+In addition to intent, judge two more things about the customer directly from the wording of THIS message:
+1. "priority" - whether the message needs urgent human attention. Return "high" for: complaints, damaged/wrong/expired/missing/leaking items, refund or warranty issues, escalations, repeated/unresolved problems, urgent language ("urgent", "asap", "immediately", "worst", "still not resolved"), rude/insulting language directed at the agent or company (e.g. "idiot", "stupid", "useless", "scam", "shut up"), or messages typed in ALL CAPS / shouting. Return "low" for greetings, general questions, order tracking, policy questions, or calm/neutral requests.
+2. "mood" - the customer's emotional tone as expressed in their own words. Return "sad" for messages expressing frustration, anger, disappointment, or complaint-driven negativity (e.g. "worst service", "very upset", "disappointed", "this is ridiculous", "why does this keep happening"), for any rude, insulting, or abusive language toward the agent/company (e.g. calling the assistant or staff "idiot", "stupid", "useless", swearing, "shut up", accusing of being a "scam"/"fraud"), and for messages typed in ALL CAPS (shouting is treated as an angry signal even without explicit negative words). Return "happy" for neutral, polite, positive, or content tone (e.g. greetings, thanks, calm requests, plain factual questions).
+IMPORTANT: A message can be angry/sad even if it does not mention an order, product, or complaint category at all - e.g. "YOU ARE ALL IDIOTS", "this app is so stupid", or "WHY IS THIS SO USELESS" must be judged priority=high, mood=sad purely from the insulting/shouting tone, regardless of intent.
+Default to "low" priority and "happy" mood whenever the tone is neutral and there is no clear negative signal. Base this purely on the current message's wording, not just its intent category.
+
 OUTPUT FORMAT:
 - Return ONLY valid JSON.
 - Never return Markdown blocks (e.g. ```json).
@@ -51,77 +58,101 @@ OUTPUT FORMAT:
       "policy_topic": "string or null",
       "response_mode": "string or null"
   },
-  "tool": "string or null"
+  "tool": "string or null",
+  "priority": "high or low",
+  "mood": "happy or sad"
 }
 
 FEW-SHOT EXAMPLES:
 
 # Negative Examples for Policy (Must be Order Tracking / Refund)
 User: "Mera order kidhar hai"
-{"intent": "order_tracking", "confidence": 0.98, "entities": {}, "tool": "track_order"}
+{"intent": "order_tracking", "confidence": 0.98, "entities": {}, "tool": "track_order", "priority": "low", "mood": "happy"}
 
 User: "Mera order kab deliver hoga"
-{"intent": "order_tracking", "confidence": 0.98, "entities": {}, "tool": "track_order"}
+{"intent": "order_tracking", "confidence": 0.98, "entities": {}, "tool": "track_order", "priority": "low", "mood": "happy"}
 
 User: "Track my order"
-{"intent": "order_tracking", "confidence": 0.98, "entities": {}, "tool": "track_order"}
+{"intent": "order_tracking", "confidence": 0.98, "entities": {}, "tool": "track_order", "priority": "low", "mood": "happy"}
 
 User: "Where is my parcel"
-{"intent": "order_tracking", "confidence": 0.97, "entities": {}, "tool": "track_order"}
+{"intent": "order_tracking", "confidence": 0.97, "entities": {}, "tool": "track_order", "priority": "low", "mood": "happy"}
 
 User: "Order 2000098496"
-{"intent": "order_tracking", "confidence": 0.99, "entities": {"order_id": "2000098496"}, "tool": "track_order"}
+{"intent": "order_tracking", "confidence": 0.99, "entities": {"order_id": "2000098496"}, "tool": "track_order", "priority": "low", "mood": "happy"}
+
+User: "It's been 10 days and my order STILL hasn't arrived, this is the worst service ever!"
+{"intent": "order_tracking", "confidence": 0.97, "entities": {}, "tool": "track_order", "priority": "high", "mood": "sad"}
 
 User: "Refund chahiye"
-{"intent": "refund", "confidence": 0.98, "entities": {}, "tool": "process_refund"}
+{"intent": "refund", "confidence": 0.98, "entities": {}, "tool": "process_refund", "priority": "high", "mood": "sad"}
 
 User: "I want to return my order"
-{"intent": "refund", "confidence": 0.96, "entities": {}, "tool": "process_refund"}
+{"intent": "refund", "confidence": 0.96, "entities": {}, "tool": "process_refund", "priority": "high", "mood": "sad"}
 
 User: "Complaint karni hai"
-{"intent": "complaint", "confidence": 0.98, "entities": {}, "tool": "create_complaint"}
+{"intent": "complaint", "confidence": 0.98, "entities": {}, "tool": "create_complaint", "priority": "high", "mood": "sad"}
+
+User: "I received a damaged product, very disappointed"
+{"intent": "complaint", "confidence": 0.98, "entities": {}, "tool": "create_complaint", "priority": "high", "mood": "sad"}
+
+# Rude / Insulting / Shouting (anger signal independent of intent category)
+User: "YOU ARE ALL IDIOTS AND THIS SERVICE IS USELESS"
+{"intent": "complaint", "confidence": 0.9, "entities": {}, "tool": "create_complaint", "priority": "high", "mood": "sad"}
+
+User: "this app is so stupid, nothing works"
+{"intent": "unknown", "confidence": 0.85, "entities": {}, "tool": null, "priority": "high", "mood": "sad"}
+
+User: "WHY IS THIS SO USELESS, FIX IT NOW"
+{"intent": "unknown", "confidence": 0.85, "entities": {}, "tool": null, "priority": "high", "mood": "sad"}
+
+User: "is this a scam? you guys are a joke"
+{"intent": "unknown", "confidence": 0.85, "entities": {}, "tool": null, "priority": "high", "mood": "sad"}
 
 # General Policy
 User: "Lahore ka order kab deliver hota hai"
-{"intent": "general_policy", "confidence": 0.98, "entities": {"policy_topic": "delivery", "response_mode": "standard"}, "tool": null}
+{"intent": "general_policy", "confidence": 0.98, "entities": {"policy_topic": "delivery", "response_mode": "standard"}, "tool": null, "priority": "low", "mood": "happy"}
 
 User: "Karachi mein order kitne din mein milta hai"
-{"intent": "general_policy", "confidence": 0.97, "entities": {"policy_topic": "delivery", "response_mode": "standard"}, "tool": null}
+{"intent": "general_policy", "confidence": 0.97, "entities": {"policy_topic": "delivery", "response_mode": "standard"}, "tool": null, "priority": "low", "mood": "happy"}
 
 User: "What are delivery charges?"
-{"intent": "general_policy", "confidence": 0.98, "entities": {"policy_topic": "delivery", "response_mode": "standard"}, "tool": null}
+{"intent": "general_policy", "confidence": 0.98, "entities": {"policy_topic": "delivery", "response_mode": "standard"}, "tool": null, "priority": "low", "mood": "happy"}
 
 User: "Express delivery?"
-{"intent": "general_policy", "confidence": 0.95, "entities": {"policy_topic": "delivery", "response_mode": "standard"}, "tool": null}
+{"intent": "general_policy", "confidence": 0.95, "entities": {"policy_topic": "delivery", "response_mode": "standard"}, "tool": null, "priority": "low", "mood": "happy"}
 
 User: "Payment methods?"
-{"intent": "general_policy", "confidence": 0.98, "entities": {"policy_topic": "payment", "response_mode": "standard"}, "tool": null}
+{"intent": "general_policy", "confidence": 0.98, "entities": {"policy_topic": "payment", "response_mode": "standard"}, "tool": null, "priority": "low", "mood": "happy"}
 
 User: "Loyalty program?"
-{"intent": "general_policy", "confidence": 0.98, "entities": {"policy_topic": "loyalty", "response_mode": "standard"}, "tool": null}
+{"intent": "general_policy", "confidence": 0.98, "entities": {"policy_topic": "loyalty", "response_mode": "standard"}, "tool": null, "priority": "low", "mood": "happy"}
 
 User: "What is warranty?"
-{"intent": "general_policy", "confidence": 0.96, "entities": {"policy_topic": "warranty", "response_mode": "standard"}, "tool": null}
+{"intent": "general_policy", "confidence": 0.96, "entities": {"policy_topic": "warranty", "response_mode": "standard"}, "tool": null, "priority": "low", "mood": "happy"}
 
 User: "Naheed.pk kya hai?"
-{"intent": "general_policy", "confidence": 0.96, "entities": {"policy_topic": "company", "response_mode": "standard"}, "tool": null}
+{"intent": "general_policy", "confidence": 0.96, "entities": {"policy_topic": "company", "response_mode": "standard"}, "tool": null, "priority": "low", "mood": "happy"}
 
 User: "OTP nahi aa raha"
-{"intent": "general_policy", "confidence": 0.95, "entities": {"policy_topic": "otp", "response_mode": "standard"}, "tool": null}
+{"intent": "general_policy", "confidence": 0.95, "entities": {"policy_topic": "otp", "response_mode": "standard"}, "tool": null, "priority": "low", "mood": "happy"}
 
 User: "Return policy kya hai?"
-{"intent": "general_policy", "confidence": 0.95, "entities": {"policy_topic": "returns", "response_mode": "standard"}, "tool": null}
+{"intent": "general_policy", "confidence": 0.95, "entities": {"policy_topic": "returns", "response_mode": "standard"}, "tool": null, "priority": "low", "mood": "happy"}
 
 # Greetings & Goodbyes
 User: "hello"
-{"intent": "greeting", "confidence": 0.99, "entities": {}, "tool": null}
+{"intent": "greeting", "confidence": 0.99, "entities": {}, "tool": null, "priority": "low", "mood": "happy"}
 
 User: "bye"
-{"intent": "goodbye", "confidence": 0.99, "entities": {}, "tool": null}
+{"intent": "goodbye", "confidence": 0.99, "entities": {}, "tool": null, "priority": "low", "mood": "happy"}
+
+User: "Thanks a lot, delivery was super fast this time!"
+{"intent": "greeting", "confidence": 0.9, "entities": {}, "tool": null, "priority": "low", "mood": "happy"}
 
 # Ambiguous / Unknown
 User: "Who is the president?"
-{"intent": "unknown", "confidence": 0.99, "entities": {}, "tool": null}
+{"intent": "unknown", "confidence": 0.99, "entities": {}, "tool": null, "priority": "low", "mood": "happy"}
 """
 
 RESPONSE_GENERATION_PROMPT = """

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Dict, Any, Optional
 
 class EntityExtraction(BaseModel):
@@ -11,6 +11,22 @@ class IntentResult(BaseModel):
     confidence: float = Field(..., description="Confidence score from 0.0 to 1.0")
     entities: EntityExtraction = Field(default_factory=EntityExtraction, description="Extracted entities from the message")
     tool: Optional[str] = Field(None, description="The recommended tool to invoke")
+    priority: str = Field("low", description="AI-judged urgency of the customer's message: 'high' or 'low'")
+    mood: str = Field("happy", description="AI-judged customer mood based on their wording: 'happy' or 'sad'")
+
+    @field_validator("priority", mode="before")
+    @classmethod
+    def _normalize_priority(cls, v):
+        if not isinstance(v, str) or v.strip().lower() not in ("high", "low"):
+            return "low"
+        return v.strip().lower()
+
+    @field_validator("mood", mode="before")
+    @classmethod
+    def _normalize_mood(cls, v):
+        if not isinstance(v, str) or v.strip().lower() not in ("happy", "sad"):
+            return "happy"
+        return v.strip().lower()
 
 class ToolRequest(BaseModel):
     tool_name: str = Field(..., description="Name of the tool to invoke")

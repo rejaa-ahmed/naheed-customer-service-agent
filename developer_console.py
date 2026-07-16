@@ -3,10 +3,12 @@ import time
 import json
 import uuid
 
-from ai.intent_parser import IntentParser
+from ai.intent_parser import IntentParser, IntentParserError
+from core.router import IntentRouter
 from core.state_manager import StateManager
 from core.flow_manager import FlowManager
 from services.order_service import OrderService
+from utils.helpers import build_reassurance_prefix
 
 # Initialize session state for Streamlit
 if "session_id" not in st.session_state:
@@ -17,6 +19,8 @@ if "state_manager" not in st.session_state:
     st.session_state.state_manager = StateManager()
 if "intent_parser" not in st.session_state:
     st.session_state.intent_parser = IntentParser()
+if "router" not in st.session_state:
+    st.session_state.router = IntentRouter()
 if "flow_manager" not in st.session_state:
     st.session_state.flow_manager = FlowManager()
 if "order_service" not in st.session_state:
@@ -111,13 +115,27 @@ with chat_col:
             sm.add_message(session_id, "user", current_input)
             current_state = sm.get_state(session_id)
             
-            # 2. Intent Parsing
+            # 2. Intent Parsing (AI first, with a rule-based fallback so a single
+            # dead/misconfigured LLM provider never breaks the whole chat)
+            used_fallback_router = False
+            llm_error = None
             try:
                 intent_result = st.session_state.intent_parser.parse_intent(current_input, state=current_state)
+            except IntentParserError as e:
+                llm_error = str(e)
+                used_fallback_router = True
+                intent_result = st.session_state.router.route(current_input)
+
+            try:
                 # Ensure entities is dict for debug panel
                 entities_dict = intent_result.entities if isinstance(intent_result.entities, dict) else intent_result.entities.model_dump()
                 sm.update_entities(session_id, entities_dict)
-                
+
+                # 2.5 Track AI-judged priority/mood for this message
+                priority = getattr(intent_result, "priority", "low") or "low"
+                mood = getattr(intent_result, "mood", "happy") or "happy"
+                sm.update_state(session_id, {"priority": priority, "mood": mood})
+
                 # 3. Flow Manager Execution
                 refreshed_state = sm.get_state(session_id)
                 flow_response = st.session_state.flow_manager.execute_flow(intent_result, refreshed_state)
@@ -149,7 +167,9 @@ with chat_col:
                         order_id=order_id,
                         complaint_type=complaint_type,
                         details=details,
-                        image_url=image_url
+                        image_url=image_url,
+                        priority=priority,
+                        mood=mood
                     )
                     ticket_msg = service_response.get("message", "")
                     # Preserve the flow's rich response (e.g. COD/refund status message)
@@ -158,23 +178,44 @@ with chat_col:
                         response_text = f"{response_text}\n\n{ticket_msg}"
                     else:
                         response_text = ticket_msg
-                    
+
+                # If the customer's message reads as upset/frustrated, lead with a
+                # short empathetic reassurance before the substantive answer.
+                reassurance = build_reassurance_prefix(mood, priority)
+                if reassurance:
+                    response_text = f"{reassurance}{response_text}"
+
                 latency = time.time() - start_time
-                
+
+                raw_json = (
+                    intent_result.model_dump() if hasattr(intent_result, "model_dump")
+                    else {
+                        "intent": intent_result.intent,
+                        "confidence": intent_result.confidence,
+                        "entities": entities_dict,
+                        "priority": priority,
+                        "mood": mood,
+                    }
+                )
+
                 st.session_state.debug_data = {
                     "latency": f"{latency:.2f}s",
                     "intent": intent_result.intent,
                     "confidence": intent_result.confidence,
                     "entities": entities_dict,
+                    "priority": priority,
+                    "mood": mood,
+                    "used_fallback_router": used_fallback_router,
+                    "llm_error": llm_error,
                     "flow_status": flow_response.status,
                     "tool_request": flow_response.tool_request,
                     "tool_args": flow_response.tool_args,
-                    "raw_json": intent_result.model_dump()
+                    "raw_json": raw_json
                 }
-                
+
             except Exception as e:
-                response_text = "An error occurred connecting to the AI."
-                st.session_state.debug_data = {"error": str(e)}
+                response_text = "An error occurred processing your message."
+                st.session_state.debug_data = {"error": str(e), "llm_error": llm_error, "used_fallback_router": used_fallback_router}
         
         sm.add_message(session_id, "assistant", response_text)
         st.session_state.messages.append({"role": "assistant", "content": response_text})
@@ -202,13 +243,25 @@ with debug_col:
             st.write(f"**Current Stage:** {current_state.current_stage}")
             st.write(f"**Waiting for Order ID:** {current_state.waiting_for_order_id}")
             st.write("**Extracted Entities:**", current_state.entities)
+            st.write(f"**Session Priority:** {current_state.priority}")
+            st.write(f"**Session Mood:** {current_state.mood}")
             
+    if debug.get("used_fallback_router"):
+        st.warning(f"All configured LLM providers failed - used the rule-based fallback router.\n\nLLM error: {debug.get('llm_error')}")
+    if debug.get("error"):
+        st.error(f"Unexpected error: {debug.get('error')}")
+
     if show_intent_parser and "intent" in debug:
         with st.expander("Intent Parser Output", expanded=True):
             st.write(f"**Response Latency:** {debug.get('latency')}")
             st.write(f"**Detected Intent:** {debug.get('intent')}")
             st.write(f"**Confidence Score:** {debug.get('confidence')}")
+            st.write(f"**Source:** {'Rule-based fallback' if debug.get('used_fallback_router') else 'AI (LLM)'}")
             st.write("**Parsed Entities:**", debug.get('entities'))
+            priority_label = "\U0001F534 High" if debug.get("priority") == "high" else "\U0001F7E2 Low"
+            mood_label = "\U0001F60A Happy" if debug.get("mood") == "happy" else "\U0001F61E Sad"
+            st.write(f"**Priority:** {priority_label}")
+            st.write(f"**Customer Mood:** {mood_label}")
             
     if show_flow_manager and "flow_status" in debug:
         with st.expander("FlowManager Output", expanded=True):

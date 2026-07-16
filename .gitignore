@@ -1,64 +1,24 @@
-# Environments
+# Environment / secrets
 .env
+.env.local
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
 .venv/
 venv/
-env/
-ENV/
-env.bak/
-venv.bak/
-
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
-*$py.class
-
-# Testing
-.pytest_cache/
-htmlcov/
-.tox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.py,cover
-
-# IDEs and Editors
-.idea/
-.vscode/
-*.swp
-*.swo
-*~
-.DS_Store
+*.egg-info/
 
 # Logs
-*.log
 logs/
+*.log
 
-# Temporary and build files
-tmp/
-temp/
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
+# Uploaded/user content
+static/uploads/*
+!static/uploads/.gitkeep
 
-# Streamlit specific
-.streamlit/
-
-# Scratch directory
-scratch/
+# OS / editor
+.DS_Store
+.vscode/
+.idea/

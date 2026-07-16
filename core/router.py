@@ -7,6 +7,8 @@ class IntentResult:
     intent: str
     confidence: float
     entities: Dict[str, Any] = field(default_factory=dict)
+    priority: str = "low"
+    mood: str = "happy"
 
 class IntentRouter:
     """
@@ -24,12 +26,60 @@ class IntentRouter:
         # Look for numbers that might be order IDs (assumed 5-10 digits)
         self.order_id_pattern = r"\b[0-9]{5,10}\b"
 
+        # Keyword heuristics used as a fallback priority/mood judge when the
+        # LLM classifier is unavailable.
+        self.high_priority_keywords = [
+            "complain", "complaint", "damaged", "broken", "wrong item", "wrong product",
+            "missing", "expired", "leak", "refund", "warranty", "urgent", "asap",
+            "immediately", "still not", "not resolved", "worst",
+        ]
+        self.sad_mood_keywords = [
+            "worst", "terrible", "disappointed", "upset", "angry", "frustrated",
+            "ridiculous", "unacceptable", "annoyed", "not happy", "very bad",
+            "waste of time", "keep happening", "again and again",
+        ]
+        # Rude/insulting language directed at the agent or company - always a strong
+        # signal of anger, independent of whether an order/product is even mentioned.
+        self.insult_keywords = [
+            "idiot", "idiots", "stupid", "moron", "morons", "useless", "incompetent",
+            "shut up", "scam", "fraud", "nonsense", "garbage service", "pathetic",
+            "trash service", "dumb", "rubbish",
+        ]
+
+    def _is_shouting(self, message: str) -> bool:
+        """Detects ALL-CAPS 'shouting' as a signal of anger/frustration."""
+        letters = [c for c in message if c.isalpha()]
+        if len(letters) < 4:
+            return False
+        uppercase_ratio = sum(1 for c in letters if c.isupper()) / len(letters)
+        return uppercase_ratio >= 0.7
+
+    def _judge_priority_and_mood(self, message: str, message_lower: str):
+        is_insult = any(kw in message_lower for kw in self.insult_keywords)
+        is_shouting = self._is_shouting(message)
+
+        priority = "high" if (
+            any(kw in message_lower for kw in self.high_priority_keywords) or is_insult or is_shouting
+        ) else "low"
+
+        mood = "sad" if (
+            any(kw in message_lower for kw in self.sad_mood_keywords) or is_insult or is_shouting
+        ) else "happy"
+
+        # A high-priority complaint-style message defaults to a sad mood unless
+        # explicitly contradicted by positive wording.
+        if priority == "high" and mood == "happy":
+            mood = "sad"
+        return priority, mood
+
     def route(self, message: str) -> IntentResult:
         if not message or not isinstance(message, str):
             return IntentResult(intent="unknown", confidence=0.0)
 
         message_lower = message.lower().strip()
-        
+
+        priority, mood = self._judge_priority_and_mood(message, message_lower)
+
         # Extract entities
         entities = {}
         order_match = re.search(self.order_id_pattern, message_lower)
@@ -61,7 +111,9 @@ class IntentRouter:
                 highest_confidence = 0.50
 
         return IntentResult(
-            intent=best_intent, 
-            confidence=highest_confidence, 
-            entities=entities
+            intent=best_intent,
+            confidence=highest_confidence,
+            entities=entities,
+            priority=priority,
+            mood=mood
         )

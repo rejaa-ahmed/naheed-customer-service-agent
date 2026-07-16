@@ -9,7 +9,7 @@ class ComplaintService:
         self.complaint_repository = complaint_repository or ComplaintRepository()
         self.order_repository = order_repository or OrderRepository()
 
-    def create_complaint(self, order_id: str, complaint_type: str, details: str, image_url: str = None) -> Dict[str, Any]:
+    def create_complaint(self, order_id: str, complaint_type: str, details: str, image_url: str = None, priority: str = "low", mood: str = "happy") -> Dict[str, Any]:
         try:
             # Check for duplicate complaint type
             if self.complaint_repository.has_existing_complaint_type(order_id, complaint_type):
@@ -40,7 +40,9 @@ class ComplaintService:
                 phone=phone,
                 subject=subject,
                 complain=details,
-                complain_type=complaint_type
+                complain_type=complaint_type,
+                priority=priority or "low",
+                mood=mood or "happy"
             )
 
             if image_url:
