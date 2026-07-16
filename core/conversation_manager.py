@@ -39,6 +39,12 @@ class ConversationManager:
             self.state_manager.clear_state(session_id)
             return "Conversation reset. How can I help you?"
             
+        # 0.1 Check Consecutive User Messages
+        state = self.state_manager.get_state(session_id)
+        if state.conversation_history and state.conversation_history[-1]["role"] == "user":
+            logger.warning(f"Consecutive user message blocked for session {session_id}")
+            return "Please wait for my response before sending another message."
+            
         # 0.5 Load State & add user message
         self.state_manager.add_message(session_id, "user", message)
         state = self.state_manager.get_state(session_id)

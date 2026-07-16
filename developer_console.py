@@ -23,6 +23,10 @@ if "order_service" not in st.session_state:
     st.session_state.order_service = OrderService()
 if "debug_data" not in st.session_state:
     st.session_state.debug_data = {}
+if "processing" not in st.session_state:
+    st.session_state.processing = False
+if "pending_input" not in st.session_state:
+    st.session_state.pending_input = None
 
 st.set_page_config(page_title="Naheed Dev Console", layout="wide")
 
@@ -64,7 +68,7 @@ with chat_col:
             st.markdown(msg["content"])
             
     # Input
-    user_input = st.chat_input("Type your message here...")
+    user_input = st.chat_input("Type your message here...", disabled=st.session_state.processing)
     
     current_state = st.session_state.state_manager.get_state(st.session_state.session_id)
     if current_state.entities.get("show_upload") or current_state.current_stage == "waiting_for_image":
@@ -78,11 +82,20 @@ with chat_col:
                     f.write(uploaded_file.getbuffer())
                 user_input = f"[Image Uploaded: /static/uploads/{uploaded_file.name}]"
 
-    if user_input:
+    # Capture new input and enter processing mode
+    if user_input and not st.session_state.processing:
+        st.session_state.processing = True
+        st.session_state.pending_input = user_input
+        st.rerun()
+
+    # Process pending input if we are in processing mode
+    if st.session_state.processing and st.session_state.pending_input:
+        current_input = st.session_state.pending_input
+        
         # Append user message
-        st.session_state.messages.append({"role": "user", "content": user_input})
+        st.session_state.messages.append({"role": "user", "content": current_input})
         with st.chat_message("user"):
-            st.markdown(user_input)
+            st.markdown(current_input)
             
         start_time = time.time()
         
@@ -90,17 +103,17 @@ with chat_col:
         session_id = st.session_state.session_id
         sm: StateManager = st.session_state.state_manager
         
-        if sm.check_cancellation(user_input):
+        if sm.check_cancellation(current_input):
             sm.clear_state(session_id)
             response_text = "Conversation reset. How can I help you?"
             st.session_state.debug_data = {"cancellation": True}
         else:
-            sm.add_message(session_id, "user", user_input)
+            sm.add_message(session_id, "user", current_input)
             current_state = sm.get_state(session_id)
             
             # 2. Intent Parsing
             try:
-                intent_result = st.session_state.intent_parser.parse_intent(user_input, state=current_state)
+                intent_result = st.session_state.intent_parser.parse_intent(current_input, state=current_state)
                 # Ensure entities is dict for debug panel
                 entities_dict = intent_result.entities if isinstance(intent_result.entities, dict) else intent_result.entities.model_dump()
                 sm.update_entities(session_id, entities_dict)
@@ -169,6 +182,10 @@ with chat_col:
         with st.chat_message("assistant"):
             st.markdown(response_text)
             
+        # Clean up processing state
+        st.session_state.pending_input = None
+        st.session_state.processing = False
+        
         st.rerun()
 
 # Debug Panel

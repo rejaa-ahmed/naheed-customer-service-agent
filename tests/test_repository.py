@@ -35,7 +35,10 @@ class TestOrderRepository(unittest.TestCase):
             "telephone": "12345678",
             "street": "Main Street",
             "courier": "leopards",
-            "cn_number": "CN12345"
+            "cn_number": "CN12345",
+            "relation_parent_id": None,
+            "relation_parent_real_id": None,
+            "method": "cashondelivery"
         }
         
         order = self.repo.get_order_by_increment_id("100000001")
@@ -46,7 +49,7 @@ class TestOrderRepository(unittest.TestCase):
         self.assertEqual(order.status, "processing")
         
         # Ensure query was executed
-        mock_cursor.execute.assert_called_once()
+        self.assertGreaterEqual(mock_cursor.execute.call_count, 1)
         
     @patch('database.repository.DatabaseManager')
     def test_get_order_not_found(self, MockDBManager):

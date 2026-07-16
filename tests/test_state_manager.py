@@ -132,5 +132,13 @@ class TestStatefulConversationManager(unittest.TestCase):
         state = self.cm.state_manager.get_state(self.session_id)
         self.assertIsNone(state.current_flow)
 
+    def test_consecutive_messages(self):
+        # Force a user message into history without assistant response
+        self.cm.state_manager.add_message(self.session_id, "user", "Hello")
+        
+        # Send consecutive message
+        res = self.cm.process_message("How are you?", self.session_id)
+        self.assertEqual(res, "Please wait for my response before sending another message.")
+
 if __name__ == '__main__':
     unittest.main()
