@@ -16,31 +16,27 @@ class GeminiClient(BaseLLMClient):
 
     def __init__(self):
         # Validate the key exists before startup
-        api_key = os.getenv("GEMINI_API_KEY")
-        if not api_key:
-            logger.critical("GEMINI_API_KEY is missing from environment variables.")
+        self.api_key = os.getenv("GEMINI_API_KEY")
+        if not self.api_key:
+            logger.warning("GEMINI_API_KEY is missing from environment variables.")
             raise ValueError("GEMINI_API_KEY is missing from environment variables.")
         
         # Initialize official client
-        self.client = genai.Client(api_key=api_key)
+        try:
+            self.client = genai.Client(api_key=self.api_key)
+        except Exception as e:
+            logger.error(f"Failed to initialize Gemini SDK: {e}")
+            raise ValueError(f"Gemini SDK Initialization failed: {e}")
+            
         self.default_model = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
         
     def health_check(self) -> bool:
         """
-        Simple health check to verify API connectivity and authentication.
+        Offline health check. Only validates config, no network calls.
         """
-        try:
-            start_time = time.time()
-            response = self.client.models.generate_content(
-                model=self.default_model,
-                contents="Ping."
-            )
-            latency = time.time() - start_time
-            logger.info(f"Gemini API Health check passed. Latency: {latency:.4f}s")
-            return True
-        except Exception as e:
-            logger.error(f"Gemini API Health check failed: {e}")
+        if not self.api_key or not self.client:
             return False
+        return True
 
     def generate_content(self, prompt: str, model: str = None, message_id: str = "unknown") -> str:
         model_name = model or self.default_model
@@ -64,30 +60,53 @@ class GeminiClient(BaseLLMClient):
         except Exception as e:
             latency = time.time() - start_time
             error_msg = str(e).upper()
-            logger.error(f"Gemini API request failed after {latency:.4f}s. Error: {error_msg}")
             
-            # Use heuristics to classify error
-            recoverable_markers = ["429", "RESOURCE_EXHAUSTED", "500", "502", "503", "504", "TIMEOUT", "DEADLINE EXCEEDED", "CONNECTION RESET"]
-            status_code = None
+            from ai.base_client import RecoverableLLMError, UnrecoverableLLMError
             
-            if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg: status_code = 429
-            elif "500" in error_msg: status_code = 500
-            elif "502" in error_msg: status_code = 502
-            elif "503" in error_msg: status_code = 503
-            elif "504" in error_msg or "TIMEOUT" in error_msg or "DEADLINE" in error_msg: status_code = 504
-            elif "400" in error_msg: status_code = 400
-            elif "401" in error_msg: status_code = 401
-            elif "403" in error_msg: status_code = 403
+            model_markers = ["MODEL NOT FOUND", "MODEL REMOVED", "MODEL UNAVAILABLE", "NO LONGER AVAILABLE TO NEW USERS"]
+            is_model_unavailable = any(marker in error_msg for marker in model_markers) or ("404" in error_msg and "MODEL" in error_msg)
             
-            is_recoverable = any(marker in error_msg for marker in recoverable_markers)
+            if is_model_unavailable:
+                logger.error(
+                    f"Gemini model '{model_name}' is unavailable for this project.\n"
+                    "Please update the GEMINI_MODEL environment variable."
+                )
+            else:
+                logger.error(f"Gemini API request failed after {latency:.4f}s. Error: {error_msg}")
             
-            raise LLMAPIError(
-                message=f"API request failed: {error_msg}",
-                provider="gemini",
-                status_code=status_code,
-                recoverable=is_recoverable,
-                original_exception=e
-            ) from e
+            # Provider-Specific (Recoverable)
+            auth_markers = ["401", "403", "UNAUTHORIZED", "FORBIDDEN", "INVALID API KEY", "PERMISSION DENIED", "MISSING CREDENTIALS", "INVALID CREDENTIALS", "AUTHENTICATION ERROR"]
+            if any(marker in error_msg for marker in auth_markers):
+                raise RecoverableLLMError("Authentication failed", self.provider_name, None, e)
+                
+            if is_model_unavailable:
+                raise RecoverableLLMError("Model unavailable", self.provider_name, 404, e)
+                
+            rate_markers = ["429", "RATE LIMIT", "RESOURCE_EXHAUSTED", "TOO MANY REQUESTS"]
+            if any(marker in error_msg for marker in rate_markers):
+                raise RecoverableLLMError("Rate limited", self.provider_name, 429, e)
+                
+            timeout_markers = ["TIMEOUT", "READ TIMEOUT", "DEADLINE EXCEEDED", "DEADLINE_EXCEEDED"]
+            if any(marker in error_msg for marker in timeout_markers):
+                raise RecoverableLLMError("Network timeout", self.provider_name, None, e)
+                
+            service_markers = ["500", "502", "503", "504", "DNS", "SSL", "CONNECTION", "DISCONNECT"]
+            if any(marker in error_msg for marker in service_markers):
+                raise RecoverableLLMError("Service unavailable", self.provider_name, None, e)
+                
+            # System-Wide (Unrecoverable)
+            invalid_markers = ["INVALID ENDPOINT", "MALFORMED PAYLOAD", "INVALID JSON", "MISSING REQUIRED PARAMETERS", "INVALID TOOL SCHEMA", "SERIALIZATION", "DESERIALIZATION", "SDK MISUSE"]
+            if any(marker in error_msg for marker in invalid_markers):
+                raise UnrecoverableLLMError("System-wide validation failed", self.provider_name, None, e)
+                
+            if "400" in error_msg or "INVALID ARGUMENT" in error_msg:
+                raise UnrecoverableLLMError("Malformed payload", self.provider_name, 400, e)
+                
+            if "404" in error_msg or "NOT_FOUND" in error_msg:
+                raise UnrecoverableLLMError("Invalid endpoint", self.provider_name, 404, e)
+                
+            # Default to recoverable
+            raise RecoverableLLMError("Service unavailable", self.provider_name, None, e)
 
 class GeminiAPIError(LLMAPIError):
     def __init__(self, message: str, status_code: Optional[int] = None, recoverable: bool = True, original_exception: Optional[Exception] = None):
