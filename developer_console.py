@@ -67,6 +67,10 @@ with chat_col:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
             
+    # Display error if message exceeded word limit
+    if st.session_state.get("word_limit_error"):
+        st.error(st.session_state.word_limit_error)
+
     # Input
     user_input = st.chat_input("Type your message here...", disabled=st.session_state.processing)
     
@@ -82,11 +86,17 @@ with chat_col:
                     f.write(uploaded_file.getbuffer())
                 user_input = f"[Image Uploaded: /static/uploads/{uploaded_file.name}]"
 
-    # Capture new input and enter processing mode
+    # Capture new input and enter processing mode with word limit validation
     if user_input and not st.session_state.processing:
-        st.session_state.processing = True
-        st.session_state.pending_input = user_input
-        st.rerun()
+        import os
+        word_limit = int(os.getenv("MAX_INPUT_WORDS", "100"))
+        if not user_input.startswith("[Image Uploaded:") and len(user_input.split()) > word_limit:
+            st.session_state.word_limit_error = f"Your message is too long ({len(user_input.split())} words). Please limit your message to {word_limit} words."
+        else:
+            st.session_state.word_limit_error = None
+            st.session_state.processing = True
+            st.session_state.pending_input = user_input
+            st.rerun()
 
     # Process pending input if we are in processing mode
     if st.session_state.processing and st.session_state.pending_input:
@@ -135,6 +145,15 @@ with chat_col:
                     order_id = flow_response.tool_args.get("order_id")
                     service_response = st.session_state.order_service.track_order(order_id)
                     response_text = service_response.get("message", "We encountered an issue checking your order.")
+                elif flow_response.tool_request == "modify_order":
+                    order_id = flow_response.tool_args.get("order_id")
+                    service_response = st.session_state.order_service.check_order_modifiable(order_id)
+                    response_text = service_response.get("message", "We encountered an issue checking your order status.")
+                    if not service_response.get("success"):
+                        st.session_state.state_manager.update_state(st.session_state.session_id, {
+                            "current_flow": "modify_order",
+                            "waiting_for_order_id": True
+                        })
                 elif flow_response.tool_request == "create_complaint":
                     order_id = flow_response.tool_args.get("order_id")
                     complaint_type = flow_response.tool_args.get("complaint_type")

@@ -58,6 +58,9 @@ class ProviderHealth:
             self.unhealthy_until = time.time() + self.cooldown_sec
             logger.warning(f"Provider {self.name} marked UNHEALTHY. Cooldown: {self.cooldown_sec}s")
 
+    def is_healthy(self) -> bool:
+        return self.state in [ProviderState.HEALTHY, ProviderState.CONFIGURED]
+
     def print_metrics(self):
         avg_latency = self.total_latency / self.request_count if self.request_count > 0 else 0
         logger.info(f"Metrics for [{self.name}]: Requests={self.request_count}, Success={self.success_count}, Failures={self.failure_count}, Failovers={self.failover_count}, AvgLatency={avg_latency:.4f}s")
@@ -70,6 +73,9 @@ class LLMFactory:
     }
     
     def __init__(self):
+        self._providers: Dict[str, BaseLLMClient] = {}
+        self.health_stats: Dict[str, ProviderHealth] = {}
+        
         chain_env = os.getenv("LLM_PROVIDER_CHAIN", "gemini,groq")
         self.provider_chain: List[str] = [p.strip().lower() for p in chain_env.split(",") if p.strip()]
         
@@ -77,10 +83,38 @@ class LLMFactory:
         max_failures = int(os.getenv("LLM_FAILURE_THRESHOLD", "3"))
         cooldown_sec = int(os.getenv("LLM_COOLDOWN_SECONDS", "60"))
         
-        self.instances: Dict[str, BaseLLMClient] = {}
-        self.health_stats: Dict[str, ProviderHealth] = {}
-        
-        # Initialize instances in chain
+        # Load default providers dynamically
+        self._load_default_providers()
+        self._initialize_chain()
+
+    def _load_default_providers(self):
+        # Dynamically import to prevent circular dependencies or forced SDK requirements
+        try:
+            from ai.openai_client import OpenAIClient
+            self.register_provider("openai", OpenAIClient())
+        except Exception as e:
+            logger.warning(f"Could not load OpenAI default provider: {e}")
+            
+        try:
+            from ai.gemini_client import GeminiClient
+            self.register_provider("gemini", GeminiClient())
+        except Exception as e:
+            logger.warning(f"Could not load Gemini default provider: {e}")
+            
+        try:
+            from ai.groq_client import GroqClient
+            self.register_provider("groq", GroqClient())
+        except Exception as e:
+            logger.warning(f"Could not load Groq default provider: {e}")
+
+    def register_provider(self, name: str, client_instance: BaseLLMClient):
+        self._providers[name] = client_instance
+
+    @property
+    def instances(self) -> Dict[str, BaseLLMClient]:
+        return self._providers
+
+    def _initialize_chain(self):
         for name in self.provider_chain:
             if name in self._registry:
                 try:

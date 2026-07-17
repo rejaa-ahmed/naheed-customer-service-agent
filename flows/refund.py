@@ -27,7 +27,7 @@ class RefundFlow(BaseFlow):
 
         if not order_id:
             # Fallback to regex
-            match = re.search(r'\b\d{5,13}\b', user_msg)
+            match = re.search(r'\b(?=[a-zA-Z0-9-]*\d)[a-zA-Z0-9-]{5,20}\b', user_msg)
             if match:
                 order_id = match.group(0)
 
@@ -77,7 +77,7 @@ class RefundFlow(BaseFlow):
         user_msg = ""
         if state.conversation_history:
             user_msg = state.conversation_history[-1]["content"].strip()
-        if re.search(r'\b\d{5,13}\b', user_msg):
+        if re.search(r'\b(?=[a-zA-Z0-9-]*\d)[a-zA-Z0-9-]{5,20}\b', user_msg):
             return True
         entities = intent_result.entities if isinstance(intent_result.entities, dict) else intent_result.entities.model_dump()
         if entities.get("order_id"):

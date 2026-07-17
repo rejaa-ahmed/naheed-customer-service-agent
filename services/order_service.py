@@ -174,3 +174,62 @@ class OrderService:
                 "status": None,
                 "order": None
             }
+
+    def check_order_modifiable(self, increment_id: str) -> Dict[str, Any]:
+        logger.info(f"OrderService received modifiability check for ID: {increment_id}")
+        
+        # 1. Validate Order ID
+        if not increment_id or not isinstance(increment_id, str) or not increment_id.strip():
+            logger.warning("Invalid Order ID provided for modifiability check.")
+            return {
+                "success": False,
+                "modifiable": False,
+                "message": "Please enter a valid Order ID."
+            }
+            
+        increment_id = increment_id.strip()
+        import re
+        if not re.match(r"^[a-zA-Z0-9_\-]+$", increment_id):
+            logger.warning(f"Invalid Order ID format: {increment_id}")
+            return {
+                "success": False,
+                "modifiable": False,
+                "message": "Order ID contains invalid characters. Please check and try again."
+            }
+            
+        try:
+            parent_order = self.repository.get_order_by_increment_id(increment_id)
+            
+            # Select active order (child if exists, else parent)
+            if parent_order.child_orders:
+                active_order = next((c for c in parent_order.child_orders if c.increment_id == increment_id), parent_order.child_orders[0])
+            else:
+                active_order = parent_order
+                
+            status = active_order.status.strip().lower() if active_order.status else ""
+            if status in ["packed", "shipped", "complete"]:
+                return {
+                    "success": True,
+                    "modifiable": False,
+                    "message": "We are sorry, your order has already been packed or shipped and therefore cannot be modified."
+                }
+            else:
+                return {
+                    "success": True,
+                    "modifiable": True,
+                    "message": f"Your order #{increment_id} is currently in '{active_order.status}' status. Connecting you to a live agent to modify it..."
+                }
+        except OrderNotFoundError:
+            logger.info(f"OrderService: Order {increment_id} not found for modifiability check.")
+            return {
+                "success": False,
+                "modifiable": False,
+                "message": "We couldn't find an order with that ID. Please check and try again."
+            }
+        except Exception as e:
+            logger.error(f"OrderService encountered an error checking modifiability for {increment_id}: {e}")
+            return {
+                "success": False,
+                "modifiable": False,
+                "message": "We are currently experiencing technical difficulties. Please try again later."
+            }
