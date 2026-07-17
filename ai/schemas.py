@@ -5,6 +5,8 @@ class EntityExtraction(BaseModel):
     order_id: Optional[str] = Field(None, description="The alphanumeric order ID if present")
     policy_topic: Optional[str] = Field(None, description="The specific policy topic requested (e.g., delivery, payment)")
     response_mode: Optional[str] = Field(None, description="The requested response mode: 'standard' or 'complex'")
+    complaint_category: Optional[str] = Field(None, description="The category of complaint: Missing, Wrong, Refund, General")
+    complaint_sub_category: Optional[str] = Field(None, description="The sub-category of complaint: e.g. Missing Item, Wrong Product, Refund, etc.")
 
 class IntentResult(BaseModel):
     intent: str = Field(..., description="The classified intent, e.g., order_tracking, complaint, general_policy, general_query, greeting, goodbye, refund, unknown")

@@ -51,7 +51,7 @@ class ComplaintService:
             return {
                 "success": True,
                 "ticket_no": ticket_no,
-                "message": f"Your complaint has been successfully registered. Ticket Number: #{ticket_no}"
+                "message": f"Your complaint has been successfully registered. Ticket Number: #{ticket_no}. We will get back to you soon."
             }
         except Exception as e:
             logger.error(f"Error creating complaint in service: {e}")

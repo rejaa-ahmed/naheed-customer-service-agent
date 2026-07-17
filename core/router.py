@@ -20,6 +20,7 @@ class IntentRouter:
         # Basic rule-based patterns for initial implementation
         self.patterns = {
             "order_tracking": [r"track.*order", r"where.*order", r"status.*order", r"order.*status"],
+            "modify_order": [r"modify.*order", r"change.*order", r"edit.*order", r"order.*change", r"order.*modify"],
             "complaint": [r"complain", r"broken", r"damaged", r"wrong item", r"issue"],
             "greeting": [r"^hi\b", r"^hello\b", r"^hey\b", r"^good morning", r"^good afternoon"],
         }

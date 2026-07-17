@@ -39,12 +39,8 @@ class TestComplaintFeature(unittest.TestCase):
         response = self.flow.handle(intent, self.state)
 
         self.assertEqual(response.status, "waiting_for_input")
-        self.assertIn("Please select the category", response.response)
-        self.assertIn("Missing", response.response)
-        self.assertIn("Wrong", response.response)
-        self.assertIn("Refund", response.response)
-        self.assertIn("General", response.response)
-        self.assertEqual(response.updated_state["current_stage"], "waiting_for_category")
+        self.assertIn("describe your complaint", response.response)
+        self.assertEqual(response.updated_state["current_stage"], "waiting_for_complaint_description")
         self.assertEqual(response.updated_state["entities"]["order_id"], "100000001")
 
     def test_flow_waiting_for_order_id_fallback(self):
@@ -55,8 +51,8 @@ class TestComplaintFeature(unittest.TestCase):
         response = self.flow.handle(intent, self.state)
 
         self.assertEqual(response.status, "waiting_for_input")
-        self.assertIn("Please select the category", response.response)
-        self.assertEqual(response.updated_state["current_stage"], "waiting_for_category")
+        self.assertIn("describe your complaint", response.response)
+        self.assertEqual(response.updated_state["current_stage"], "waiting_for_complaint_description")
         self.assertEqual(response.updated_state["entities"]["order_id"], "12345")
 
     def test_flow_waiting_for_category_missing(self):
@@ -228,10 +224,9 @@ class TestComplaintFeature(unittest.TestCase):
 
         response = self.flow.handle(intent, self.state)
 
-        self.assertEqual(response.status, "waiting_for_input")
-        self.assertIn("Image received", response.response)
-        self.assertEqual(response.updated_state["current_stage"], "waiting_for_resolution")
-        self.assertEqual(response.updated_state["entities"]["image_url"], "/static/uploads/item.jpg")
+        self.assertEqual(response.status, "completed")
+        self.assertEqual(response.tool_request, "create_complaint")
+        self.assertEqual(response.tool_args["image_url"], "/static/uploads/item.jpg")
 
     def test_flow_resolution_selection_refund_money(self):
         self.state.current_stage = "waiting_for_resolution"
@@ -369,10 +364,10 @@ class TestComplaintFeature(unittest.TestCase):
         # 1. Trigger flow (stage: None)
         response = self.flow.handle(intent, self.state)
         self.assertEqual(response.status, "waiting_for_input")
-        self.assertIn("Please select the category", response.response)
+        self.assertIn("describe your complaint", response.response)
         self.assertEqual(response.updated_state["entities"]["order_id"], "2000096085-1")
         self.assertEqual(response.updated_state["entities"]["parent_order_id"], "2000096085")
-        self.assertEqual(response.updated_state["current_stage"], "waiting_for_category")
+        self.assertEqual(response.updated_state["current_stage"], "waiting_for_complaint_description")
 
         # 2. Select Missing (stage: waiting_for_category)
         self.state.current_stage = "waiting_for_category"
@@ -399,8 +394,57 @@ class TestComplaintFeature(unittest.TestCase):
 
         response2 = self.flow.handle(intent, self.state)
         self.assertEqual(response2.status, "waiting_for_input")
-        self.assertEqual(response2.updated_state["current_stage"], "waiting_for_category")
+        self.assertEqual(response2.updated_state["current_stage"], "waiting_for_complaint_description")
         self.assertIsNone(response2.updated_state["entities"]["complaint_sub_category"])
+
+    def test_flow_waiting_for_description_classification_llm(self):
+        self.state.current_stage = "waiting_for_complaint_description"
+        self.state.entities["order_id"] = "12345"
+        self.state.conversation_history.append({"role": "user", "content": "I got a damaged box"})
+        
+        # Simulate LLM extracting wrong / damaged product
+        intent = IntentResult(
+            intent="complaint",
+            confidence=0.95,
+            entities={
+                "complaint_category": "Wrong",
+                "complaint_sub_category": "Damaged Product"
+            }
+        )
+        
+        response = self.flow.handle(intent, self.state)
+        
+        self.assertEqual(response.status, "waiting_for_input")
+        self.assertIn("upload an image related to your complaint", response.response)
+        self.assertEqual(response.updated_state["current_stage"], "waiting_for_image")
+
+    def test_return_policy_passed(self):
+        from datetime import datetime, timedelta
+        # Set delivery date to 10 days ago
+        self.mock_order_repo.get_delivery_date.return_value = datetime.now() - timedelta(days=10)
+        self.mock_order_repo.resolve_to_latest_order_id.return_value = "12345"
+        
+        intent = IntentResult(intent="complaint", confidence=0.9, entities={"order_id": "12345"})
+        self.state.conversation_history.append({"role": "user", "content": "complain for 12345"})
+        
+        response = self.flow.handle(intent, self.state)
+        self.assertEqual(response.status, "completed")
+        self.assertIn("more than 7 days have passed", response.response)
+        self.assertIsNone(response.updated_state["current_flow"])
+
+    def test_return_policy_not_passed(self):
+        from datetime import datetime, timedelta
+        # Set delivery date to 3 days ago
+        self.mock_order_repo.get_delivery_date.return_value = datetime.now() - timedelta(days=3)
+        self.mock_order_repo.resolve_to_latest_order_id.return_value = "12345"
+        
+        intent = IntentResult(intent="complaint", confidence=0.9, entities={"order_id": "12345"})
+        self.state.conversation_history.append({"role": "user", "content": "complain for 12345"})
+        
+        response = self.flow.handle(intent, self.state)
+        self.assertEqual(response.status, "waiting_for_input")
+        self.assertIn("Please describe your complaint", response.response)
+        self.assertEqual(response.updated_state["current_stage"], "waiting_for_complaint_description")
 
 if __name__ == '__main__':
     unittest.main()
