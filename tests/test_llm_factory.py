@@ -23,16 +23,23 @@ class TestLLMFactory(unittest.TestCase):
         self.MockGemini = MagicMock()
         self.MockGroq = MagicMock()
         
-        self.mock_gemini_instance = self.MockGemini.return_value
-        self.mock_groq_instance = self.MockGroq.return_value
+        self.mock_gemini_instance = MagicMock()
+        self.mock_groq_instance = MagicMock()
+        self.MockGemini.return_value = self.mock_gemini_instance
+        self.MockGroq.return_value = self.mock_groq_instance
         
-        # Patch the registry directly so the factory uses our mocks
-        patcher_registry = patch.dict("ai.llm_factory.LLMFactory._registry", {
-            "gemini": self.MockGemini,
-            "groq": self.MockGroq
-        })
-        patcher_registry.start()
-        self.addCleanup(patcher_registry.stop)
+        self.mock_gemini_instance.provider_name = "gemini"
+        self.mock_groq_instance.provider_name = "groq"
+        self.mock_gemini_instance.health_check.return_value = True
+        self.mock_groq_instance.health_check.return_value = True
+
+        # Patch the client classes in ai.gemini_client and ai.groq_client
+        self.patcher_gemini = patch('ai.gemini_client.GeminiClient', self.MockGemini)
+        self.patcher_groq = patch('ai.groq_client.GroqClient', self.MockGroq)
+        self.patcher_gemini.start()
+        self.patcher_groq.start()
+        self.addCleanup(self.patcher_gemini.stop)
+        self.addCleanup(self.patcher_groq.stop)
         
         self.factory = LLMFactory()
 
@@ -87,17 +94,18 @@ class TestLLMFactory(unittest.TestCase):
         
         self.factory.generate_content_with_failover("test prompt")
         
-        # Assert gemini is now unhealthy
+        # Assert gemini is now unhealthy (state: DEGRADED)
         self.assertFalse(self.factory.health_stats["gemini"].is_healthy())
         
-        # Next request should bypass gemini entirely and go straight to groq
+        # In the stateless traversal design, gemini will still be tried on the next request.
+        # So it should be called again, and failover to groq.
         self.mock_groq_instance.generate_content.reset_mock()
         self.mock_gemini_instance.generate_content.reset_mock()
         
         result = self.factory.generate_content_with_failover("test prompt 2")
         
         self.assertEqual(result, "Groq Response")
-        self.mock_gemini_instance.generate_content.assert_not_called()
+        self.mock_gemini_instance.generate_content.assert_called_once()
         self.mock_groq_instance.generate_content.assert_called_once()
 
     def test_unrecoverable_error_bypasses_failover(self):

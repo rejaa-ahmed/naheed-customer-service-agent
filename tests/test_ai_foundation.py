@@ -56,6 +56,28 @@ class TestAIFoundation(unittest.TestCase):
     def test_prompt_and_tool_loading(self):
         self.assertIsNotNone(prompts.INTENT_EXTRACTION_PROMPT)
         self.assertTrue(len(tools.TOOLS_DEFINITIONS) > 0)
+
+    @patch('core.conversation_manager.os.getenv')
+    def test_word_limit_enforced(self, mock_getenv):
+        mock_getenv.side_effect = lambda key, default=None: "5" if key == "MAX_INPUT_WORDS" else default
+        from core.conversation_manager import ConversationManager
+        
+        manager = ConversationManager(
+            parser=MagicMock(),
+            router=MagicMock(),
+            order_service=MagicMock(),
+            complaint_service=MagicMock(),
+            state_manager=MagicMock(),
+            flow_manager=MagicMock()
+        )
+        
+        # Message within limit
+        response_ok = manager.process_message("hello this is short query")
+        self.assertNotEqual(response_ok, "Your message is too long. Please limit your message to 5 words.")
+        
+        # Message exceeding limit
+        response_fail = manager.process_message("hello this is a longer query now")
+        self.assertEqual(response_fail, "Your message is too long. Please limit your message to 5 words.")
         
 if __name__ == '__main__':
     unittest.main()

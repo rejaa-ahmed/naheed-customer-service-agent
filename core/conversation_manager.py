@@ -34,7 +34,13 @@ class ConversationManager:
         message_id = str(uuid.uuid4())
         logger.info(f"\n[REQUEST START]\nmessage_id={message_id}\nuser_message={message}")
         
-        # 0. Check Cancellation
+        # 0. Check Word Limit
+        word_limit = int(os.getenv("MAX_INPUT_WORDS", "100"))
+        if not message.startswith("[Image Uploaded:") and len(message.split()) > word_limit:
+            logger.warning(f"User message rejected: exceeded word limit of {word_limit} words.")
+            return f"Your message is too long. Please limit your message to {word_limit} words."
+            
+        # 0.1 Check Cancellation
         if self.state_manager.check_cancellation(message):
             self.state_manager.clear_state(session_id)
             return "Conversation reset. How can I help you?"
@@ -105,6 +111,16 @@ class ConversationManager:
             logger.info(f"Routing to OrderService for Order ID: {order_id}")
             service_response = self.order_service.track_order(order_id)
             response_text = service_response.get("message", "We encountered an issue checking your order.")
+        elif flow_response.tool_request == "modify_order":
+            order_id = flow_response.tool_args.get("order_id")
+            logger.info(f"Routing to OrderService for Order ID: {order_id} (modify)")
+            service_response = self.order_service.check_order_modifiable(order_id)
+            response_text = service_response.get("message", "We encountered an issue checking your order status.")
+            if not service_response.get("success"):
+                self.state_manager.update_state(session_id, {
+                    "current_flow": "modify_order",
+                    "waiting_for_order_id": True
+                })
         elif flow_response.tool_request == "create_complaint":
             order_id = flow_response.tool_args.get("order_id")
             complaint_type = flow_response.tool_args.get("complaint_type")

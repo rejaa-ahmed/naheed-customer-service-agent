@@ -12,6 +12,7 @@ from flows.general_query import GeneralQueryFlow
 from flows.greeting import GreetingFlow
 from flows.goodbye import GoodbyeFlow
 from flows.unknown import UnknownFlow
+from flows.modify_order import ModifyOrderFlow
 
 class FlowManager:
     """
@@ -21,6 +22,7 @@ class FlowManager:
         # Register flows
         self._flows: Dict[str, BaseFlow] = {
             "order_tracking": OrderTrackingFlow(),
+            "modify_order": ModifyOrderFlow(),
             "complaint": ComplaintFlow(),
             "refund": RefundFlow(),
             "general_policy": GeneralPolicyFlow(),

@@ -11,9 +11,12 @@ logger = get_logger(__name__)
 
 _pool = None
 _pool_lock = threading.Lock()
+_use_direct_connection = False
 
 def get_connection_pool():
-    global _pool
+    global _pool, _use_direct_connection
+    if _use_direct_connection:
+        return None
     if _pool is None:
         with _pool_lock:
             if _pool is None:
@@ -31,8 +34,9 @@ def get_connection_pool():
                         connection_timeout=DB_CONNECTION_TIMEOUT
                     )
                 except Error as e:
-                    logger.error(f"Failed to create connection pool: {e}")
-                    raise e
+                    logger.error(f"Failed to create connection pool: {e}. Falling back to direct connections.")
+                    _use_direct_connection = True
+                    return None
     return _pool
 
 class DatabaseManager:
@@ -45,11 +49,21 @@ class DatabaseManager:
         for attempt in range(max_retries):
             try:
                 pool = get_connection_pool()
-                self.connection = pool.get_connection()
-                # Validate connection before handing it off
-                if not self.connection.is_connected():
-                    logger.warning("Pooled connection is stale. Reconnecting...")
-                    self.connection.reconnect(attempts=3, delay=1)
+                if pool:
+                    self.connection = pool.get_connection()
+                    # Validate connection before handing it off
+                    if not self.connection.is_connected():
+                        logger.warning("Pooled connection is stale. Reconnecting...")
+                        self.connection.reconnect(attempts=3, delay=1)
+                else:
+                    self.connection = mysql.connector.connect(
+                        host=DB_HOST,
+                        port=DB_PORT,
+                        database=DB_NAME,
+                        user=DB_USER,
+                        password=DB_PASSWORD,
+                        connection_timeout=DB_CONNECTION_TIMEOUT
+                    )
                 return self.connection
             except mysql.connector.errors.PoolError as e:
                 if attempt < max_retries - 1:
@@ -59,7 +73,7 @@ class DatabaseManager:
                     logger.error("Connection pool exhausted after max retries! No available connections.")
                     raise e
             except Error as e:
-                logger.error(f"Error connecting to MySQL Database from pool: {e}")
+                logger.error(f"Error connecting to MySQL Database: {e}")
                 raise e
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -77,9 +91,19 @@ class Database:
             try:
                 if not self.connection or not self.connection.is_connected():
                     pool = get_connection_pool()
-                    self.connection = pool.get_connection()
-                    if not self.connection.is_connected():
-                        self.connection.reconnect(attempts=3, delay=1)
+                    if pool:
+                        self.connection = pool.get_connection()
+                        if not self.connection.is_connected():
+                            self.connection.reconnect(attempts=3, delay=1)
+                    else:
+                        self.connection = mysql.connector.connect(
+                            host=DB_HOST,
+                            port=DB_PORT,
+                            database=DB_NAME,
+                            user=DB_USER,
+                            password=DB_PASSWORD,
+                            connection_timeout=DB_CONNECTION_TIMEOUT
+                        )
                 return
             except mysql.connector.errors.PoolError as e:
                 if attempt < max_retries - 1:
@@ -89,7 +113,7 @@ class Database:
                     logger.error("Connection pool exhausted after max retries! No available connections.")
                     raise e
             except Error as e:
-                logger.error(f"Error connecting to MySQL Database via pool: {e}")
+                logger.error(f"Error connecting to MySQL Database: {e}")
                 raise e
 
     def disconnect(self):
