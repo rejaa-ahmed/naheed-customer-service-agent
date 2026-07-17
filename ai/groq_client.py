@@ -19,19 +19,20 @@ class GroqClient(BaseLLMClient):
         self.default_model = os.getenv("GROQ_MODEL", "llama3-8b-8192")
         
         if not self.api_key:
-            logger.critical("GROQ_API_KEY is missing from environment variables.")
-            raise LLMAPIError("GROQ_API_KEY must be set in .env", "groq", 401, False)
+            logger.warning("GROQ_API_KEY is missing from environment variables.")
+            raise ValueError("GROQ_API_KEY must be set in .env")
             
         # Initialize official Groq client
-        self.client = Groq(api_key=self.api_key)
+        try:
+            self.client = Groq(api_key=self.api_key)
+        except Exception as e:
+            logger.error(f"Failed to initialize Groq SDK: {e}")
+            raise ValueError(f"Groq SDK Initialization failed: {e}")
         
     def health_check(self) -> bool:
-        try:
-            self.generate_content("Ping.", model=self.default_model)
-            return True
-        except Exception as e:
-            logger.error(f"Groq API Health check failed: {e}")
+        if not self.api_key or not getattr(self, "client", None):
             return False
+        return True
 
     def generate_content(self, prompt: str, model: str = None, message_id: str = "unknown") -> str:
         model_name = model or self.default_model
@@ -57,38 +58,44 @@ class GroqClient(BaseLLMClient):
             
             return chat_completion.choices[0].message.content
             
-        except groq.RateLimitError as e:
-            latency = time.time() - start_time
-            error_msg = str(e).upper()
-            logger.error(f"Groq rate limit exceeded after {latency:.4f}s. Error: {error_msg}")
-            raise LLMAPIError(f"Rate limit exceeded: {error_msg}", "groq", 429, True, e) from e
-            
-        except (groq.APITimeoutError, groq.APIConnectionError) as e:
-            latency = time.time() - start_time
-            error_msg = str(e).upper()
-            logger.error(f"Groq network error after {latency:.4f}s. Error: {error_msg}")
-            raise LLMAPIError(f"Network error: {error_msg}", "groq", 504, True, e) from e
-            
-        except groq.InternalServerError as e:
-            latency = time.time() - start_time
-            error_msg = str(e).upper()
-            logger.error(f"Groq server error after {latency:.4f}s. Error: {error_msg}")
-            raise LLMAPIError(f"Server error: {error_msg}", "groq", 500, True, e) from e
-            
-        except groq.AuthenticationError as e:
-            latency = time.time() - start_time
-            error_msg = str(e).upper()
-            logger.error(f"Groq authentication error after {latency:.4f}s. Error: {error_msg}")
-            raise LLMAPIError(f"Authentication error: {error_msg}", "groq", 401, False, e) from e
-            
-        except groq.BadRequestError as e:
-            latency = time.time() - start_time
-            error_msg = str(e).upper()
-            logger.error(f"Groq bad request error after {latency:.4f}s. Error: {error_msg}")
-            raise LLMAPIError(f"Bad request error: {error_msg}", "groq", 400, False, e) from e
-            
         except Exception as e:
             latency = time.time() - start_time
             error_msg = str(e).upper()
-            logger.error(f"Unexpected Groq API request failed after {latency:.4f}s. Error: {error_msg}")
-            raise LLMAPIError(f"Unexpected API request failed: {error_msg}", "groq", None, False, e) from e
+            logger.error(f"Groq API request failed after {latency:.4f}s. Error: {error_msg}")
+            
+            from ai.base_client import RecoverableLLMError, UnrecoverableLLMError
+            
+            # Provider-Specific (Recoverable)
+            auth_markers = ["401", "403", "UNAUTHORIZED", "FORBIDDEN", "INVALID API KEY", "PERMISSION DENIED", "MISSING CREDENTIALS", "INVALID CREDENTIALS", "AUTHENTICATION ERROR"]
+            if any(marker in error_msg for marker in auth_markers):
+                raise RecoverableLLMError("Authentication failed", self.provider_name, None, e)
+                
+            model_markers = ["MODEL NOT FOUND", "MODEL REMOVED", "MODEL UNAVAILABLE"]
+            if any(marker in error_msg for marker in model_markers) or ("404" in error_msg and "MODEL" in error_msg):
+                raise RecoverableLLMError("Model unavailable", self.provider_name, 404, e)
+                
+            rate_markers = ["429", "RATE LIMIT", "RESOURCE EXHAUSTED", "TOO MANY REQUESTS"]
+            if any(marker in error_msg for marker in rate_markers):
+                raise RecoverableLLMError("Rate limited", self.provider_name, 429, e)
+                
+            timeout_markers = ["TIMEOUT", "READ TIMEOUT", "DEADLINE EXCEEDED"]
+            if any(marker in error_msg for marker in timeout_markers):
+                raise RecoverableLLMError("Network timeout", self.provider_name, None, e)
+                
+            service_markers = ["500", "502", "503", "504", "DNS", "SSL", "CONNECTION", "DISCONNECT"]
+            if any(marker in error_msg for marker in service_markers):
+                raise RecoverableLLMError("Service unavailable", self.provider_name, None, e)
+                
+            # System-Wide (Unrecoverable)
+            invalid_markers = ["INVALID ENDPOINT", "MALFORMED PAYLOAD", "INVALID JSON", "MISSING REQUIRED PARAMETERS", "INVALID TOOL SCHEMA", "SERIALIZATION", "DESERIALIZATION", "SDK MISUSE"]
+            if any(marker in error_msg for marker in invalid_markers):
+                raise UnrecoverableLLMError("System-wide validation failed", self.provider_name, None, e)
+                
+            if "400" in error_msg or "INVALID ARGUMENT" in error_msg:
+                raise UnrecoverableLLMError("Malformed payload", self.provider_name, 400, e)
+                
+            if "404" in error_msg or "NOT_FOUND" in error_msg:
+                raise UnrecoverableLLMError("Invalid endpoint", self.provider_name, 404, e)
+                
+            # Default to recoverable
+            raise RecoverableLLMError("Service unavailable", self.provider_name, None, e)
