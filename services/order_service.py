@@ -217,7 +217,7 @@ class OrderService:
                 return {
                     "success": True,
                     "modifiable": True,
-                    "message": f"Your order #{increment_id} is currently in '{active_order.status}' status. Connecting you to a live agent to modify it..."
+                    "message": f"Your order #{increment_id} is currently in '{active_order.status}' status and can be modified. What would you like to add or remove in your order? Connecting you to a live agent to modify it..."
                 }
         except OrderNotFoundError:
             logger.info(f"OrderService: Order {increment_id} not found for modifiability check.")

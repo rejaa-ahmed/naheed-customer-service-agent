@@ -8,7 +8,6 @@ from core.router import IntentRouter
 from core.state_manager import StateManager
 from core.flow_manager import FlowManager
 from services.order_service import OrderService
-from utils.helpers import build_reassurance_prefix
 
 # Initialize session state for Streamlit
 if "session_id" not in st.session_state:
@@ -200,7 +199,11 @@ with chat_col:
 
                 # If the customer's message reads as upset/frustrated, lead with a
                 # short empathetic reassurance before the substantive answer.
-                reassurance = build_reassurance_prefix(mood, priority)
+                reassurance = st.session_state.intent_parser.generate_reassurance(
+                    user_message=current_input,
+                    mood=mood,
+                    priority=priority
+                )
                 if reassurance:
                     response_text = f"{reassurance}{response_text}"
 

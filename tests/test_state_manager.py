@@ -53,6 +53,7 @@ class TestStateManager(unittest.TestCase):
 class TestStatefulConversationManager(unittest.TestCase):
     def setUp(self):
         self.mock_parser = MagicMock()
+        self.mock_parser.generate_reassurance.return_value = ""
         self.mock_router = MagicMock()
         self.mock_order_service = MagicMock()
         self.mock_order_service.track_order.return_value = {"message": "Order is processing."}
@@ -131,6 +132,16 @@ class TestStatefulConversationManager(unittest.TestCase):
         
         state = self.cm.state_manager.get_state(self.session_id)
         self.assertIsNone(state.current_flow)
+
+        # Substring checks
+        self.assertTrue(self.cm.state_manager.check_cancellation("please cancel"))
+        self.assertTrue(self.cm.state_manager.check_cancellation("nevermind"))
+        self.assertFalse(self.cm.state_manager.check_cancellation("canceled"))
+        self.assertFalse(self.cm.state_manager.check_cancellation("cancellation"))
+        self.assertFalse(self.cm.state_manager.check_cancellation("why did you cancelmy order"))
+        self.assertFalse(self.cm.state_manager.check_cancellation("cancel my order"))
+        self.assertFalse(self.cm.state_manager.check_cancellation("cancel the whole order"))
+        self.assertFalse(self.cm.state_manager.check_cancellation("order cancel please"))
 
     def test_consecutive_messages(self):
         # Force a user message into history without assistant response

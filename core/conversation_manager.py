@@ -7,7 +7,6 @@ from ai.intent_parser import IntentParser, IntentParserError
 from services.order_service import OrderService
 from services.complaint_service import ComplaintService
 from utils.logger import get_logger
-from utils.helpers import build_reassurance_prefix
 
 logger = get_logger(__name__)
 
@@ -153,7 +152,12 @@ class ConversationManager:
 
         # If the customer's message reads as upset/frustrated, lead with a short
         # empathetic reassurance before the substantive answer.
-        reassurance = build_reassurance_prefix(state.mood, state.priority)
+        reassurance = self.parser.generate_reassurance(
+            user_message=message,
+            mood=state.mood,
+            priority=state.priority,
+            message_id=message_id
+        )
         if reassurance:
             response_text = f"{reassurance}{response_text}"
 
