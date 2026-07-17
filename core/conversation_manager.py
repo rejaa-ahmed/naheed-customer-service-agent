@@ -7,6 +7,7 @@ from ai.intent_parser import IntentParser, IntentParserError
 from services.order_service import OrderService
 from services.complaint_service import ComplaintService
 from utils.logger import get_logger
+from utils.helpers import build_reassurance_prefix
 
 logger = get_logger(__name__)
 
@@ -91,7 +92,14 @@ class ConversationManager:
         if intent_result:
             entities = intent_result.entities if isinstance(intent_result.entities, dict) else intent_result.entities.model_dump()
             self.state_manager.update_entities(session_id, entities)
-            
+
+            # Track the AI-judged priority ("high"/"low") and mood ("happy"/"sad")
+            # for this message so it can be attached to any ticket filed later.
+            priority = getattr(intent_result, "priority", "low") or "low"
+            mood = getattr(intent_result, "mood", "happy") or "happy"
+            self.state_manager.update_state(session_id, {"priority": priority, "mood": mood})
+            logger.info(f"Judged customer priority={priority}, mood={mood} (message_id={message_id})")
+
         state = self.state_manager.get_state(session_id)
         
         # 2. Execute Flow via FlowManager
@@ -126,12 +134,14 @@ class ConversationManager:
             complaint_type = flow_response.tool_args.get("complaint_type")
             details = flow_response.tool_args.get("details")
             image_url = flow_response.tool_args.get("image_url")
-            logger.info(f"Routing to ComplaintService for Order ID: {order_id}")
+            logger.info(f"Routing to ComplaintService for Order ID: {order_id} (priority={state.priority}, mood={state.mood})")
             service_response = self.complaint_service.create_complaint(
                 order_id=order_id,
                 complaint_type=complaint_type,
                 details=details,
-                image_url=image_url
+                image_url=image_url,
+                priority=state.priority,
+                mood=state.mood
             )
             ticket_msg = service_response.get("message", "")
             # If the flow already built a rich response (e.g. COD/refund status message),
@@ -140,8 +150,14 @@ class ConversationManager:
                 response_text = f"{response_text}\n\n{ticket_msg}"
             else:
                 response_text = ticket_msg
-            
+
+        # If the customer's message reads as upset/frustrated, lead with a short
+        # empathetic reassurance before the substantive answer.
+        reassurance = build_reassurance_prefix(state.mood, state.priority)
+        if reassurance:
+            response_text = f"{reassurance}{response_text}"
+
         self.state_manager.add_message(session_id, "assistant", response_text)
-        
+
         logger.info(f"[REQUEST END] message_id={message_id}\n")
         return response_text

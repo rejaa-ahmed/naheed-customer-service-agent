@@ -355,27 +355,32 @@ class OrderRepository:
 
 class ComplaintRepository:
     def create_complaint_ticket(
-        self, 
-        order_number: str, 
-        entity_id: int, 
-        name: str, 
-        email: str, 
-        phone: str, 
-        subject: str, 
-        complain: str, 
-        complain_type: str
+        self,
+        order_number: str,
+        entity_id: int,
+        name: str,
+        email: str,
+        phone: str,
+        subject: str,
+        complain: str,
+        complain_type: str,
+        priority: str = "low",
+        mood: str = "happy"
     ) -> int:
+        # AI-judged urgency ("high"/"low") and customer mood ("happy"/"sad"), captured
+        # from the message that triggered this ticket. Stored in `priority`/`mood`
+        # columns on nhd_complain_tickets - see migrations/add_priority_mood_to_complain_tickets.sql
         query = """
         INSERT INTO nhd_complain_tickets (
             order_number, entity_id, customer_name, customer_email, customer_phone, 
-            subject, complain, type, status, action_taken, refund_amount
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'New', '', '')
+            subject, complain, type, status, action_taken, refund_amount, priority
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'New', '', '', %s)
         """
         try:
             with DatabaseManager() as conn:
-                logger.info(f"Creating complaint ticket for order {order_number}")
+                logger.info(f"Creating complaint ticket for order {order_number} (priority={priority}, mood={mood})")
                 cursor = conn.cursor()
-                cursor.execute(query, (order_number, entity_id, name, email, phone, subject, complain, complain_type))
+                cursor.execute(query, (order_number, entity_id, name, email, phone, subject, complain, complain_type, priority))
                 conn.commit()
                 ticket_no = cursor.lastrowid
                 cursor.close()
