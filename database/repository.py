@@ -372,6 +372,13 @@ class ComplaintRepository:
         # AI-judged urgency ("high"/"low") and customer mood ("happy"/"sad"), captured
         # from the message that triggered this ticket. Stored in `priority`/`mood`
         # columns on nhd_complain_tickets - see migrations/add_priority_mood_to_complain_tickets.sql
+        
+        # Determine priority on the basis of customer's mood
+        if mood.lower() in ["sad", "angry", "frustrated", "bad", "unhappy"]:
+            priority = "high"
+        elif mood.lower() == "happy":
+            priority = "low"
+
         query = """
         INSERT INTO nhd_complain_tickets (
             order_number, entity_id, customer_name, customer_email, customer_phone, 
