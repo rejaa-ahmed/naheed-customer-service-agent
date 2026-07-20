@@ -6,6 +6,7 @@ from core.state_manager import ConversationState
 # Import all flows
 from flows.order_tracking import OrderTrackingFlow
 from flows.complaint import ComplaintFlow
+from flows.complaint_tracking import ComplaintTrackingFlow
 from flows.refund import RefundFlow
 from flows.general_policy import GeneralPolicyFlow
 from flows.general_query import GeneralQueryFlow
@@ -24,6 +25,7 @@ class FlowManager:
             "order_tracking": OrderTrackingFlow(),
             "modify_order": ModifyOrderFlow(),
             "complaint": ComplaintFlow(),
+            "complaint_tracking": ComplaintTrackingFlow(),
             "refund": RefundFlow(),
             "general_policy": GeneralPolicyFlow(),
             "general_query": GeneralQueryFlow(),

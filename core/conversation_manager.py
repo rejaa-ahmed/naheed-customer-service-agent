@@ -1,11 +1,13 @@
 import os
 import uuid
+from typing import Tuple, Dict, Any
 from core.router import IntentRouter
 from core.state_manager import StateManager
 from core.flow_manager import FlowManager
 from ai.intent_parser import IntentParser, IntentParserError
 from services.order_service import OrderService
 from services.complaint_service import ComplaintService
+from services.complaint_tracking_service import ComplaintTrackingService
 from utils.logger import get_logger
 from utils.helpers import build_reassurance_prefix
 
@@ -16,12 +18,13 @@ class ConversationManager:
     Manages the flow of the conversation by utilizing the IntentRouter
     to determine the user's intent, and delegating business logic to Services.
     """
-    def __init__(self, parser: IntentParser = None, router: IntentRouter = None, order_service: OrderService = None, complaint_service: ComplaintService = None, state_manager: StateManager = None, flow_manager: FlowManager = None):
+    def __init__(self, parser: IntentParser = None, router: IntentRouter = None, order_service: OrderService = None, complaint_service: ComplaintService = None, complaint_tracking_service: ComplaintTrackingService = None, state_manager: StateManager = None, flow_manager: FlowManager = None):
         # Dependency injection allows easy mocking in tests
         self.parser = parser or IntentParser()
         self.router = router or IntentRouter()
         self.order_service = order_service or OrderService()
         self.complaint_service = complaint_service or ComplaintService()
+        self.complaint_tracking_service = complaint_tracking_service or ComplaintTrackingService()
         self.state_manager = state_manager or StateManager()
         self.flow_manager = flow_manager or FlowManager()
         
@@ -31,7 +34,7 @@ class ConversationManager:
         except ValueError:
             self.confidence_threshold = 0.85
 
-    def process_message(self, message: str, session_id: str = "default") -> str:
+    def process_message_with_debug(self, message: str, session_id: str = "default") -> Tuple[str, Dict[str, Any]]:
         message_id = str(uuid.uuid4())
         logger.info(f"\n[REQUEST START]\nmessage_id={message_id}\nuser_message={message}")
         
@@ -58,6 +61,8 @@ class ConversationManager:
         
         # 1. Classify Intent via LLM
         intent_result = None
+        used_fallback_router = False
+        llm_error = None
         try:
             logger.info(f"ConversationManager -> IntentParser (message_id={message_id})")
             ai_result = self.parser.parse_intent(message, state=state, message_id=message_id)
@@ -70,10 +75,12 @@ class ConversationManager:
             else:
                 logger.warning(f"Fallback Reason: Low AI confidence ({ai_result.confidence} < {self.confidence_threshold})")
         except IntentParserError as e:
+            llm_error = str(e)
             logger.info("Gemini unavailable.")
         
         # 1.5 Fallback to rule-based router
         if not intent_result:
+            used_fallback_router = True
             logger.info("Switching to legacy router.")
             try:
                 intent_result = self.router.route(message)
@@ -87,7 +94,7 @@ class ConversationManager:
                 response_text = "I'm having trouble understanding your request. Please try again."
                 self.state_manager.add_message(session_id, "assistant", response_text)
                 logger.info(f"[REQUEST END] message_id={message_id}\n")
-                return response_text
+                return response_text, {"error": "Routing failed."}
         # Update entities in state
         if intent_result:
             entities = intent_result.entities if isinstance(intent_result.entities, dict) else intent_result.entities.model_dump()
@@ -129,6 +136,13 @@ class ConversationManager:
                     "current_flow": "modify_order",
                     "waiting_for_order_id": True
                 })
+        elif flow_response.tool_request == "track_complaint":
+            order_id = flow_response.tool_args.get("order_no")
+            logger.info(f"Routing to ComplaintTrackingService for Order ID: {order_id}")
+            service_response = self.complaint_tracking_service.track_complaint(order_id)
+            response_text = service_response.get("message", "We encountered an issue checking your complaint status.")
+            num_complaints = len(service_response.get("complaints", [])) if service_response.get("success") else 0
+            logger.info(f"ComplaintTrackingService found {num_complaints} complaints for order: {order_id}")
         elif flow_response.tool_request == "create_complaint":
             order_id = flow_response.tool_args.get("order_id")
             complaint_type = flow_response.tool_args.get("complaint_type")
@@ -160,4 +174,38 @@ class ConversationManager:
         self.state_manager.add_message(session_id, "assistant", response_text)
 
         logger.info(f"[REQUEST END] message_id={message_id}\n")
+        
+        entities_dict = {}
+        if intent_result:
+            entities_dict = intent_result.entities if isinstance(intent_result.entities, dict) else intent_result.entities.model_dump()
+
+        raw_json = (
+            intent_result.model_dump() if hasattr(intent_result, "model_dump")
+            else {
+                "intent": intent_result.intent if intent_result else "unknown",
+                "confidence": intent_result.confidence if intent_result else 0.0,
+                "entities": entities_dict,
+                "priority": state.priority,
+                "mood": state.mood,
+            }
+        ) if intent_result else {}
+
+        debug_data = {
+            "intent": intent_result.intent if intent_result else "unknown",
+            "confidence": intent_result.confidence if intent_result else 0.0,
+            "entities": entities_dict,
+            "priority": state.priority,
+            "mood": state.mood,
+            "used_fallback_router": used_fallback_router,
+            "llm_error": llm_error,
+            "flow_status": flow_response.status,
+            "tool_request": flow_response.tool_request,
+            "tool_args": flow_response.tool_args,
+            "raw_json": raw_json
+        }
+        
+        return response_text, debug_data
+
+    def process_message(self, message: str, session_id: str = "default") -> str:
+        response_text, _ = self.process_message_with_debug(message, session_id)
         return response_text

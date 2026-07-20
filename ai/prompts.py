@@ -12,11 +12,12 @@ The intents have a strict priority order. If multiple could apply, pick the high
 3. refund
 4. return
 5. complaint
-6. general_policy
-7. greeting
-8. goodbye
-9. general_query
-10. unknown
+6. complaint_tracking
+7. general_policy
+8. greeting
+9. goodbye
+10. general_query
+11. unknown
 
 LANGUAGE INSTRUCTIONS:
 - You must understand English, Urdu, Roman Urdu, and mixed languages natively.
@@ -32,9 +33,15 @@ ORDER MODIFICATION RULES:
 - User wants to change, edit, update, cancel, or modify items or details in their order.
 - Examples: "I want to change my order", "modify order", "order edit karna hai", "items change karne hain".
 
-REFUND & COMPLAINT RULES:
-- "Refund chahiye", "Return karna hai", "Complaint karni hai" MUST map to their specific intents ('refund', 'complaint', or 'return' if added later, map "Return karna hai" to 'refund'). NEVER 'general_policy'.
-- When a complaint is filed, extract the 'complaint_category' (from: ["Missing", "Wrong", "Refund", "General"]) and 'complaint_sub_category' (from: ["Missing Item", "Missing Accessories", "Wrong Product", "Damaged Product", "Expired Product", "Leak product", "Refund", "Warranty Claim", "Cashback", "Change of Mind", "Order Info", "Complaint Info", "Extra Parcel", "Delay Delivery", "General"]) based on the customer's explanation.
+REFUND RULES:
+- "Refund chahiye", "Return karna hai" MUST map to their specific intents ('refund' or 'return' if added later, map "Return karna hai" to 'refund'). NEVER 'general_policy'.
+
+COMPLAINT VS COMPLAINT TRACKING RULES:
+- The word "complaint" alone must NEVER determine the intent. You MUST infer the user's objective.
+- `complaint` is ONLY for when the customer wants to create, register, or file a NEW complaint (e.g., "I received damaged products", "I want to complain", "Register a complaint", "Mujhe complaint karni hai", "Meri item missing hai", "Wrong item mila hai", "complaint lodge karni hai").
+- When a new complaint is filed, extract the 'complaint_category' (from: ["Missing", "Wrong", "Refund", "General"]) and 'complaint_sub_category' (from: ["Missing Item", "Missing Accessories", "Wrong Product", "Damaged Product", "Expired Product", "Leak product", "Refund", "Warranty Claim", "Cashback", "Change of Mind", "Order Info", "Complaint Info", "Extra Parcel", "Delay Delivery", "General"]) based on the customer's explanation.
+- `complaint_tracking` is ONLY for when the customer ALREADY has a complaint and wants to know its progress, status, update, whether it has been resolved, or what happened afterwards. They are NOT creating a new complaint.
+- STRICT NEGATIVE CONSTRAINTS for `complaint_tracking`: The following phrases MUST ALWAYS classify as `complaint_tracking` (even if the words track or status are not present): "meri complaint ka kya hua", "complaint ki thi", "main ne complaint ki thi", "us complaint ka kya bana", "uska kya hua", "koi update", "complaint resolve hui?", "complaint ka status", "complaint check karo", "complaint follow up", "complaint tracking", "complaint track karo", "meri complaint kidhar pohanchi", "complaint pe kya action hua", "abhi tak koi jawab nahi aya", "meri complaint dekho", "meri complaint ka update do", "us complaint ka result batao".
 
 GENERAL POLICY RULES:
 - Only for static company information.
@@ -125,6 +132,45 @@ User: "my box was leaking shampoo"
 
 User: "I didn't get the correct items in order 1002"
 {"intent": "complaint", "confidence": 0.97, "entities": {"order_id": "1002", "complaint_category": "Wrong", "complaint_sub_category": "Wrong Product"}, "tool": "create_complaint"}
+
+User: "complaint lodge karni hai"
+{"intent": "complaint", "confidence": 0.98, "entities": {}, "tool": "create_complaint", "priority": "high", "mood": "sad"}
+
+# Complaint Tracking
+User: "complaint ki thi uska kya hua"
+{"intent": "complaint_tracking", "confidence": 0.98, "entities": {}, "tool": "track_complaint", "priority": "high", "mood": "sad"}
+
+User: "meri complaint ka update do"
+{"intent": "complaint_tracking", "confidence": 0.98, "entities": {}, "tool": "track_complaint", "priority": "high", "mood": "sad"}
+
+User: "us complaint ka kya bana"
+{"intent": "complaint_tracking", "confidence": 0.98, "entities": {}, "tool": "track_complaint", "priority": "high", "mood": "sad"}
+
+User: "complaint resolve hui?"
+{"intent": "complaint_tracking", "confidence": 0.98, "entities": {}, "tool": "track_complaint", "priority": "high", "mood": "sad"}
+
+User: "complaint pe kya action hua"
+{"intent": "complaint_tracking", "confidence": 0.98, "entities": {}, "tool": "track_complaint", "priority": "high", "mood": "sad"}
+
+User: "abhi tak koi jawab nahi aya"
+{"intent": "complaint_tracking", "confidence": 0.98, "entities": {}, "tool": "track_complaint", "priority": "high", "mood": "sad"}
+
+# Conversational Follow-ups
+Previous Assistant Message: "Your complaint has been registered."
+User: "uska kya hua"
+{"intent": "complaint_tracking", "confidence": 0.98, "entities": {}, "tool": "track_complaint", "priority": "high", "mood": "sad"}
+
+Previous Assistant Message: "Complaint registered."
+User: "koi update?"
+{"intent": "complaint_tracking", "confidence": 0.98, "entities": {}, "tool": "track_complaint", "priority": "high", "mood": "sad"}
+
+Previous Assistant Message: "Complaint registered."
+User: "abhi tak resolve nahi hui?"
+{"intent": "complaint_tracking", "confidence": 0.98, "entities": {}, "tool": "track_complaint", "priority": "high", "mood": "sad"}
+
+Previous Assistant Message: "Complaint registered."
+User: "complaint karni hai"
+{"intent": "complaint", "confidence": 0.98, "entities": {}, "tool": "create_complaint", "priority": "high", "mood": "sad"}
 
 # Order Modification
 User: "I want to change my order"
