@@ -8,7 +8,13 @@ from ai.intent_parser import IntentParser, IntentParserError
 from services.order_service import OrderService
 from services.complaint_service import ComplaintService
 from services.complaint_tracking_service import ComplaintTrackingService
+from services.conversation_service import ConversationService
+from services.audit_service import AuditService, request_id_var, session_id_var
+from services.rate_limiter_service import RateLimiterService
+from core.audit_events import AuditEvent, AuditCategory, AuditOutcome
+from core.error_codes import ErrorCode
 from utils.logger import get_logger
+import time
 
 logger = get_logger(__name__)
 
@@ -17,7 +23,7 @@ class ConversationManager:
     Manages the flow of the conversation by utilizing the IntentRouter
     to determine the user's intent, and delegating business logic to Services.
     """
-    def __init__(self, parser: IntentParser = None, router: IntentRouter = None, order_service: OrderService = None, complaint_service: ComplaintService = None, complaint_tracking_service: ComplaintTrackingService = None, state_manager: StateManager = None, flow_manager: FlowManager = None):
+    def __init__(self, parser: IntentParser = None, router: IntentRouter = None, order_service: OrderService = None, complaint_service: ComplaintService = None, complaint_tracking_service: ComplaintTrackingService = None, state_manager: StateManager = None, flow_manager: FlowManager = None, conversation_service: ConversationService = None):
         # Dependency injection allows easy mocking in tests
         self.parser = parser or IntentParser()
         self.router = router or IntentRouter()
@@ -26,6 +32,9 @@ class ConversationManager:
         self.complaint_tracking_service = complaint_tracking_service or ComplaintTrackingService()
         self.state_manager = state_manager or StateManager()
         self.flow_manager = flow_manager or FlowManager()
+        self.conversation_service = conversation_service or ConversationService()
+        self.audit_service = AuditService()
+        self.rate_limiter_service = RateLimiterService()
         
         threshold_env = os.getenv("AI_CONFIDENCE_THRESHOLD", "0.85")
         try:
@@ -35,24 +44,96 @@ class ConversationManager:
 
     def process_message_with_debug(self, message: str, session_id: str = "default") -> Tuple[str, Dict[str, Any]]:
         message_id = str(uuid.uuid4())
+        # Set request_id and session_id for the current context
+        request_id_var.set(message_id)
+        session_id_var.set(session_id)
+        
         logger.info(f"\n[REQUEST START]\nmessage_id={message_id}\nuser_message={message}")
         
-        # 0. Check Word Limit
+        # Log session started if this is a new session
+        state = self.state_manager.get_state(session_id)
+        if not state.conversation_history:
+            self.audit_service.log_event(
+                event_type=AuditEvent.SESSION_STARTED,
+                category=AuditCategory.LIFECYCLE,
+                outcome=AuditOutcome.SUCCESS,
+                actor="user"
+            )
+            
+        # 0. Check Rate Limit (First Business Check)
+        try:
+            start_time = time.time()
+            is_allowed, rl_metadata = self.rate_limiter_service.is_allowed(session_id)
+            duration_ms = int((time.time() - start_time) * 1000)
+            
+            if not is_allowed:
+                self.audit_service.log_event(
+                    event_type=AuditEvent.RATE_LIMIT,
+                    category=AuditCategory.SECURITY,
+                    outcome=AuditOutcome.FAILURE,
+                    actor="user",
+                    error_code=ErrorCode.ERR_RATE_LIMIT_EXCEEDED,
+                    metadata=rl_metadata,
+                    duration_ms=duration_ms
+                )
+                logger.warning(f"Rate limit exceeded for session {session_id}")
+                return self.rate_limiter_service.rejection_message, {}
+        except Exception as e:
+            logger.error(f"RateLimiterService error: {e}")
+            self.audit_service.log_event(
+                event_type=AuditEvent.SYSTEM_EXCEPTION,
+                category=AuditCategory.SYSTEM,
+                outcome=AuditOutcome.FAILURE,
+                actor="system",
+                metadata={"error_details": str(e), "execution_stage": "rate_limit"}
+            )
+            # Allow the conversation to continue (fail-safe)
+
+        # 0.1 Check Word Limit
         word_limit = int(os.getenv("MAX_INPUT_WORDS", "100"))
         if not message.startswith("[Image Uploaded:") and len(message.split()) > word_limit:
+            self.audit_service.log_event(
+                event_type=AuditEvent.RATE_LIMIT,
+                category=AuditCategory.SECURITY,
+                outcome=AuditOutcome.FAILURE,
+                actor="user",
+                metadata={"error_details": "exceeded word limit"}
+            )
             logger.warning(f"User message rejected: exceeded word limit of {word_limit} words.")
-            return f"Your message is too long. Please limit your message to {word_limit} words."
+            response_text = f"Your message is too long. Please limit your message to {word_limit} words."
+            logger.info("ENTER ConversationManager persistence")
+            self.conversation_service.save_user_message(session_id, message)
+            self.conversation_service.save_bot_message(session_id, response_text)
+            logger.info("EXIT ConversationManager persistence")
+            return response_text, {}
             
         # 0.1 Check Cancellation
         if self.state_manager.check_cancellation(message):
             self.state_manager.clear_state(session_id)
-            return "Conversation reset. How can I help you?"
+            response_text = "Conversation reset. How can I help you?"
+            logger.info("ENTER ConversationManager persistence")
+            self.conversation_service.save_user_message(session_id, message, intent="cancel")
+            self.conversation_service.save_bot_message(session_id, response_text)
+            logger.info("EXIT ConversationManager persistence")
+            return response_text, {}
             
         # 0.1 Check Consecutive User Messages
         state = self.state_manager.get_state(session_id)
         if state.conversation_history and state.conversation_history[-1]["role"] == "user":
+            self.audit_service.log_event(
+                event_type=AuditEvent.RATE_LIMIT,
+                category=AuditCategory.SECURITY,
+                outcome=AuditOutcome.FAILURE,
+                actor="user",
+                metadata={"error_details": "consecutive user message"}
+            )
             logger.warning(f"Consecutive user message blocked for session {session_id}")
-            return "Please wait for my response before sending another message."
+            response_text = "Please wait for my response before sending another message."
+            logger.info("ENTER ConversationManager persistence")
+            self.conversation_service.save_user_message(session_id, message)
+            self.conversation_service.save_bot_message(session_id, response_text)
+            logger.info("EXIT ConversationManager persistence")
+            return response_text, {}
             
         # 0.5 Load State & add user message
         self.state_manager.add_message(session_id, "user", message)
@@ -62,20 +143,43 @@ class ConversationManager:
         intent_result = None
         used_fallback_router = False
         llm_error = None
+        start_time = time.time()
         try:
             logger.info(f"ConversationManager -> IntentParser (message_id={message_id})")
             ai_result = self.parser.parse_intent(message, state=state, message_id=message_id)
+            duration_ms = int((time.time() - start_time) * 1000)
+            
             if ai_result.confidence >= self.confidence_threshold:
                 intent_result = ai_result
                 logger.info(f"AI Detected Intent: {intent_result.intent} (Confidence: {intent_result.confidence})")
-                logger.info(f"AI Extracted Entities: {intent_result.entities}")
+                
+                self.audit_service.log_event(
+                    event_type=AuditEvent.LLM_INTERACTION,
+                    category=AuditCategory.SYSTEM,
+                    outcome=AuditOutcome.SUCCESS,
+                    actor="system",
+                    duration_ms=duration_ms,
+                    metadata={"intent": intent_result.intent, "confidence": intent_result.confidence}
+                )
+                
                 if getattr(intent_result, "tool", None):
                     logger.info(f"AI Recommended Tool: {intent_result.tool}")
             else:
                 logger.warning(f"Fallback Reason: Low AI confidence ({ai_result.confidence} < {self.confidence_threshold})")
         except IntentParserError as e:
+            duration_ms = int((time.time() - start_time) * 1000)
             llm_error = str(e)
             logger.info("Gemini unavailable.")
+            
+            self.audit_service.log_event(
+                event_type=AuditEvent.LLM_INTERACTION,
+                category=AuditCategory.SYSTEM,
+                outcome=AuditOutcome.FAILURE,
+                actor="system",
+                duration_ms=duration_ms,
+                error_code=ErrorCode.ERR_LLM_TIMEOUT if "timeout" in llm_error.lower() else ErrorCode.ERR_LLM_AUTH,
+                metadata={"error_details": llm_error}
+            )
         
         # 1.5 Fallback to rule-based router
         if not intent_result:
@@ -90,9 +194,15 @@ class ConversationManager:
                 intent_result = None
                 
             if not intent_result:
+                state = self.state_manager.get_state(session_id)
+                state.consecutive_unknown_count += 1
                 response_text = "I'm having trouble understanding your request. Please try again."
                 self.state_manager.add_message(session_id, "assistant", response_text)
                 logger.info(f"[REQUEST END] message_id={message_id}\n")
+                logger.info("ENTER ConversationManager persistence")
+                self.conversation_service.save_user_message(session_id, message, intent="unknown")
+                self.conversation_service.save_bot_message(session_id, response_text)
+                logger.info("EXIT ConversationManager persistence")
                 return response_text, {"error": "Routing failed."}
         # Update entities in state
         if intent_result:
@@ -108,8 +218,36 @@ class ConversationManager:
 
         state = self.state_manager.get_state(session_id)
         
+        # 1.8 Evaluate Escalation Rules
+        if intent_result.intent == "unknown":
+            state.consecutive_unknown_count += 1
+        else:
+            state.consecutive_unknown_count = 0
+            
+        if self._evaluate_escalation(state, intent_result):
+            logger.info("Escalation rules triggered, redirecting to agent_handoff.")
+            intent_result.intent = "agent_handoff"
+        
         # 2. Execute Flow via FlowManager
-        flow_response = self.flow_manager.execute_flow(intent_result, state)
+        try:
+            flow_response = self.flow_manager.execute_flow(intent_result, state)
+            state.consecutive_failure_count = 0
+        except Exception as e:
+            logger.error(f"Flow execution failed: {e}")
+            self.audit_service.log_event(
+                event_type=AuditEvent.SYSTEM_EXCEPTION,
+                category=AuditCategory.SYSTEM,
+                outcome=AuditOutcome.FAILURE,
+                actor="system",
+                metadata={"error_details": str(e), "execution_stage": "flow_execution"}
+            )
+            state.consecutive_failure_count += 1
+            if state.consecutive_failure_count >= 3:
+                intent_result.intent = "agent_handoff"
+                flow_response = self.flow_manager.execute_flow(intent_result, state)
+                state.consecutive_failure_count = 0
+            else:
+                raise
         
         # 3. Apply state updates
         if flow_response.status == "completed":
@@ -198,8 +336,8 @@ class ConversationManager:
             "intent": intent_result.intent if intent_result else "unknown",
             "confidence": intent_result.confidence if intent_result else 0.0,
             "entities": entities_dict,
-            "priority": state.priority,
-            "mood": state.mood,
+            "priority": state.priority if state else "low",
+            "mood": state.mood if state else "happy",
             "used_fallback_router": used_fallback_router,
             "llm_error": llm_error,
             "flow_status": flow_response.status,
@@ -208,8 +346,52 @@ class ConversationManager:
             "raw_json": raw_json
         }
         
+        # Save messages to database via ConversationService
+        flow_name = state.current_flow if state and getattr(state, 'current_flow', None) else None
+        
+        logger.info("ENTER ConversationManager persistence")
+        self.conversation_service.save_user_message(
+            session_id=session_id,
+            message=message,
+            intent=debug_data["intent"],
+            flow_name=flow_name,
+            confidence=debug_data["confidence"]
+        )
+        self.conversation_service.save_bot_message(
+            session_id=session_id,
+            message=response_text
+        )
+        logger.info("EXIT ConversationManager persistence")
+        
+        # Finally, if the session was marked for termination, close it
+        if getattr(flow_response, "end_conversation", False):
+            logger.info(f"Session marked for termination: {session_id}")
+            self.conversation_service.close_session(session_id)
+            
         return response_text, debug_data
 
     def process_message(self, message: str, session_id: str = "default") -> str:
         response_text, _ = self.process_message_with_debug(message, session_id)
         return response_text
+
+    def _evaluate_escalation(self, state, intent_result) -> bool:
+        """Returns True if the system should force agent handoff."""
+        if not intent_result:
+            return False
+            
+        if intent_result.intent == "agent_handoff":
+            return True
+            
+        if state.consecutive_unknown_count >= 3:
+            return True
+            
+        if state.consecutive_failure_count >= 3:
+            return True
+            
+        if getattr(intent_result, "escalation_recommended", False):
+            # Only escalate if the intent is not a core business flow (like complaint, order_tracking, refund, cancel_order)
+            # which we should still attempt to handle.
+            if intent_result.intent not in ["complaint", "refund", "order_tracking", "cancel_order", "modify_order"]:
+                return True
+                
+        return False

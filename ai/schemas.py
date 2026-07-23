@@ -7,14 +7,16 @@ class EntityExtraction(BaseModel):
     response_mode: Optional[str] = Field(None, description="The requested response mode: 'standard' or 'complex'")
     complaint_category: Optional[str] = Field(None, description="The category of complaint: Missing, Wrong, Refund, General")
     complaint_sub_category: Optional[str] = Field(None, description="The sub-category of complaint: e.g. Missing Item, Wrong Product, Refund, etc.")
+    cancel_reason: Optional[str] = Field(None, description="Structured reason for order cancellation: duplicate_order, ordered_by_mistake, no_longer_needed, price_negotiation, shipping_negotiation")
 
 class IntentResult(BaseModel):
-    intent: str = Field(..., description="The classified intent, e.g., order_tracking, complaint, general_policy, general_query, greeting, goodbye, refund, unknown")
+    intent: str = Field(..., description="The classified intent, e.g., order_tracking, complaint, general_policy, general_query, greeting, goodbye, refund, unknown, cancel_order, agent_handoff")
     confidence: float = Field(..., description="Confidence score from 0.0 to 1.0")
     entities: EntityExtraction = Field(default_factory=EntityExtraction, description="Extracted entities from the message")
     tool: Optional[str] = Field(None, description="The recommended tool to invoke")
     priority: str = Field("low", description="AI-judged urgency of the customer's message: 'high' or 'low'")
     mood: str = Field("happy", description="AI-judged customer mood based on their wording: 'happy' or 'sad'")
+    escalation_recommended: bool = Field(False, description="Whether the LLM explicitly recommends connecting the user to a human CSR")
 
     @field_validator("priority", mode="before")
     @classmethod

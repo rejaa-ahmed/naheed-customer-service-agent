@@ -17,7 +17,9 @@ The intents have a strict priority order. If multiple could apply, pick the high
 8. greeting
 9. goodbye
 10. general_query
-11. unknown
+11. cancel_order
+12. agent_handoff
+13. unknown
 
 LANGUAGE INSTRUCTIONS:
 - You must understand English, Urdu, Roman Urdu, and mixed languages natively.
@@ -30,8 +32,20 @@ ORDER TRACKING RULES:
 - CRITICAL DISTINCTION: Only classify as 'order_tracking' if the user refers to a SPECIFIC order (e.g. "mera order", "my order", "track my order", "order id"). If asking about GENERAL delivery timings or cities (e.g. "Lahore ka order kab deliver hota hai"), it MUST be 'general_policy'.
 
 ORDER MODIFICATION RULES:
-- User wants to change, edit, update, cancel, or modify items or details in their order.
+- User wants to change, edit, or update items or details in their order.
 - Examples: "I want to change my order", "modify order", "order edit karna hai", "items change karne hain".
+- DO NOT use this for cancellation.
+
+CANCELLATION RULES:
+- User explicitly wants to cancel their order.
+- Examples: "Cancel my order", "order cancel karna hai", "I don't need it anymore".
+- You MUST extract a structured `cancel_reason` entity from these options: `duplicate_order`, `ordered_by_mistake`, `no_longer_needed`, `price_negotiation`, `shipping_negotiation`. 
+- If the customer asks to cancel because shipping is too high or they want a lower price, map `cancel_reason` to `shipping_negotiation` or `price_negotiation`.
+
+AGENT HANDOFF & ESCALATION RULES:
+- Map explicitly to `agent_handoff` if the user requests a human (e.g., "talk to a human", "customer support", "CSR", "representative").
+- Set `escalation_recommended = true` in the output JSON if the customer is highly frustrated, angry, or highly dissatisfied, OR if they are requesting compensation or a price match.
+- IMPORTANT DISTINCTION: Informational questions like "What are your shipping fees?" or "Do you have discounts?" MUST map to `general_policy` or `general_query`. Only classify as `agent_handoff` or `escalation_recommended = true` when it is a NEGOTIATION (demanding a lower price, complaining about high fees, refusing to pay).
 
 REFUND RULES:
 - "Refund chahiye", "Return karna hai" MUST map to their specific intents ('refund' or 'return' if added later, map "Return karna hai" to 'refund'). NEVER 'general_policy'.
@@ -47,6 +61,11 @@ GENERAL POLICY RULES:
 - Only for static company information.
 - Extract the 'policy_topic' entity from exactly this list: ["delivery", "payment", "otp", "loyalty", "returns", "warranty", "company", "unknown_policy"].
 - Extract 'response_mode' as either "standard" or "complex" (complex is for comparisons or summaries).
+
+GOODBYE RULES:
+- User explicitly wants to end the conversation or says farewell.
+- Include cultural and regional variants (e.g., "Allah Hafiz", "Khuda Hafiz", "Fi Amanillah", "Allah Nigeban", "bye", "see you", "take care").
+- CRITICAL DISTINCTION: Must ONLY classify as `goodbye` if they are truly leaving. If they say "bye" or "thanks" but follow it up with ANOTHER question or request (e.g., "Thanks, but can you also track my order?", "Bye, actually wait..."), DO NOT classify as `goodbye`. Classify based on the follow-up request instead. You must determine the user's final conversational intent, not simply the presence of farewell words.
 
 CRITICAL NEGATIVE RULES:
 - A numeric-only message (e.g. "12345") MUST be classified as "unknown" with no entities unless contextual.
@@ -66,12 +85,14 @@ OUTPUT FORMAT:
 {
   "intent": "...",
   "confidence": 0.97,
+  "escalation_recommended": false,
   "entities": {
       "order_id": "string or null",
       "policy_topic": "string or null",
       "response_mode": "string or null",
       "complaint_category": "string or null",
-      "complaint_sub_category": "string or null"
+      "complaint_sub_category": "string or null",
+      "cancel_reason": "duplicate_order | ordered_by_mistake | no_longer_needed | price_negotiation | shipping_negotiation or null"
   },
   "tool": "string or null",
   "priority": "high or low",
@@ -174,13 +195,29 @@ User: "complaint karni hai"
 
 # Order Modification
 User: "I want to change my order"
-{"intent": "modify_order", "confidence": 0.98, "entities": {}, "tool": "modify_order"}
+{"intent": "modify_order", "confidence": 0.98, "escalation_recommended": false, "entities": {}, "tool": "modify_order"}
 
 User: "change order 100028"
-{"intent": "modify_order", "confidence": 0.99, "entities": {"order_id": "100028"}, "tool": "modify_order"}
+{"intent": "modify_order", "confidence": 0.99, "escalation_recommended": false, "entities": {"order_id": "100028"}, "tool": "modify_order"}
 
 User: "mera order modify kardein"
-{"intent": "modify_order", "confidence": 0.97, "entities": {}, "tool": "modify_order"}
+{"intent": "modify_order", "confidence": 0.97, "escalation_recommended": false, "entities": {}, "tool": "modify_order"}
+
+# Cancellation & Escalation
+User: "Cancel my order"
+{"intent": "cancel_order", "confidence": 0.99, "escalation_recommended": false, "entities": {}, "tool": "cancel_order", "priority": "low", "mood": "happy"}
+
+User: "order 399184 cancel kardein mene galti se place kardia tha"
+{"intent": "cancel_order", "confidence": 0.98, "escalation_recommended": false, "entities": {"order_id": "399184", "cancel_reason": "ordered_by_mistake"}, "tool": "cancel_order", "priority": "low", "mood": "happy"}
+
+User: "Please cancel, shipping is way too expensive"
+{"intent": "cancel_order", "confidence": 0.98, "escalation_recommended": false, "entities": {"cancel_reason": "shipping_negotiation"}, "tool": "cancel_order", "priority": "high", "mood": "sad"}
+
+User: "I want to speak to a human"
+{"intent": "agent_handoff", "confidence": 0.99, "escalation_recommended": true, "entities": {}, "tool": "agent_handoff", "priority": "high", "mood": "sad"}
+
+User: "Give me a discount or I will not buy"
+{"intent": "agent_handoff", "confidence": 0.98, "escalation_recommended": true, "entities": {}, "tool": "agent_handoff", "priority": "high", "mood": "sad"}
 
 # General Policy
 User: "Lahore ka order kab deliver hota hai"
@@ -217,11 +254,56 @@ User: "Return policy kya hai?"
 User: "hello"
 {"intent": "greeting", "confidence": 0.99, "entities": {}, "tool": null, "priority": "low", "mood": "happy"}
 
-User: "bye"
-{"intent": "goodbye", "confidence": 0.99, "entities": {}, "tool": null, "priority": "low", "mood": "happy"}
-
 User: "Thanks a lot, delivery was super fast this time!"
 {"intent": "greeting", "confidence": 0.9, "entities": {}, "tool": null, "priority": "low", "mood": "happy"}
+
+# Goodbyes (True Positives)
+User: "bye bye"
+{"intent": "goodbye", "confidence": 0.99, "entities": {}, "tool": null, "priority": "low", "mood": "happy"}
+
+User: "see you later"
+{"intent": "goodbye", "confidence": 0.99, "entities": {}, "tool": null, "priority": "low", "mood": "happy"}
+
+User: "thanks that's all I needed"
+{"intent": "goodbye", "confidence": 0.98, "entities": {}, "tool": null, "priority": "low", "mood": "happy"}
+
+User: "no thanks"
+{"intent": "goodbye", "confidence": 0.95, "entities": {}, "tool": null, "priority": "low", "mood": "happy"}
+
+User: "Allah Hafiz ji"
+{"intent": "goodbye", "confidence": 0.99, "entities": {}, "tool": null, "priority": "low", "mood": "happy"}
+
+User: "Khuda Hafiz"
+{"intent": "goodbye", "confidence": 0.99, "entities": {}, "tool": null, "priority": "low", "mood": "happy"}
+
+User: "Fi Amanillah"
+{"intent": "goodbye", "confidence": 0.99, "entities": {}, "tool": null, "priority": "low", "mood": "happy"}
+
+User: "Allah Nigeban"
+{"intent": "goodbye", "confidence": 0.99, "entities": {}, "tool": null, "priority": "low", "mood": "happy"}
+
+User: "take care"
+{"intent": "goodbye", "confidence": 0.99, "entities": {}, "tool": null, "priority": "low", "mood": "happy"}
+
+User: "have a nice day"
+{"intent": "goodbye", "confidence": 0.99, "entities": {}, "tool": null, "priority": "low", "mood": "happy"}
+
+User: "thanks bye"
+{"intent": "goodbye", "confidence": 0.99, "entities": {}, "tool": null, "priority": "low", "mood": "happy"}
+
+# Goodbyes False Positives (Continuing conversation)
+User: "Thanks, one more question."
+{"intent": "general_query", "confidence": 0.95, "entities": {}, "tool": null, "priority": "low", "mood": "happy"}
+
+User: "Okay, now track my order."
+{"intent": "order_tracking", "confidence": 0.98, "entities": {}, "tool": "track_order", "priority": "low", "mood": "happy"}
+
+User: "Thanks, can you also check my complaint?"
+{"intent": "complaint_tracking", "confidence": 0.98, "entities": {}, "tool": "track_complaint", "priority": "low", "mood": "happy"}
+
+User: "Bye, actually wait..."
+{"intent": "general_query", "confidence": 0.90, "entities": {}, "tool": null, "priority": "low", "mood": "happy"}
+
 
 # Ambiguous / Unknown
 User: "Who is the president?"

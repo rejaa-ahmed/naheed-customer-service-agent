@@ -1,0 +1,152 @@
+[
+    {
+        "phrase": "bye",
+        "status": "ERROR",
+        "error": "API Error"
+    },
+    {
+        "phrase": "bye bye",
+        "status": "ERROR",
+        "error": "API Error"
+    },
+    {
+        "phrase": "goodbye",
+        "status": "ERROR",
+        "error": "API Error"
+    },
+    {
+        "phrase": "see you",
+        "status": "ERROR",
+        "error": "API Error"
+    },
+    {
+        "phrase": "see you later",
+        "status": "ERROR",
+        "error": "API Error"
+    },
+    {
+        "phrase": "catch you later",
+        "status": "ERROR",
+        "error": "API Error"
+    },
+    {
+        "phrase": "take care",
+        "status": "ERROR",
+        "error": "API Error"
+    },
+    {
+        "phrase": "have a nice day",
+        "status": "ERROR",
+        "error": "API Error"
+    },
+    {
+        "phrase": "thanks bye",
+        "status": "ERROR",
+        "error": "API Error"
+    },
+    {
+        "phrase": "thank you bye",
+        "status": "ERROR",
+        "error": "API Error"
+    },
+    {
+        "phrase": "thanks that's all",
+        "status": "ERROR",
+        "error": "API Error"
+    },
+    {
+        "phrase": "that's all",
+        "status": "ERROR",
+        "error": "API Error"
+    },
+    {
+        "phrase": "that's all I needed",
+        "status": "ERROR",
+        "error": "API Error"
+    },
+    {
+        "phrase": "no thanks",
+        "status": "ERROR",
+        "error": "API Error"
+    },
+    {
+        "phrase": "Allah Hafiz",
+        "status": "ERROR",
+        "error": "API Error"
+    },
+    {
+        "phrase": "Allah Hafiz ji",
+        "status": "ERROR",
+        "error": "API Error"
+    },
+    {
+        "phrase": "Allah hafiz",
+        "status": "ERROR",
+        "error": "API Error"
+    },
+    {
+        "phrase": "Khuda Hafiz",
+        "status": "ERROR",
+        "error": "API Error"
+    },
+    {
+        "phrase": "Allah Nigeban",
+        "status": "ERROR",
+        "error": "API Error"
+    },
+    {
+        "phrase": "Fi Amanillah",
+        "status": "ERROR",
+        "error": "API Error"
+    },
+    {
+        "phrase": "shukriya Allah Hafiz",
+        "status": "ERROR",
+        "error": "API Error"
+    },
+    {
+        "phrase": "Thanks, one more question.",
+        "status": "ERROR",
+        "error": "API Error"
+    },
+    {
+        "phrase": "Okay, now track my order.",
+        "status": "ERROR",
+        "error": "API Error"
+    },
+    {
+        "phrase": "Thanks, can you also check my complaint?",
+        "status": "ERROR",
+        "error": "API Error"
+    },
+    {
+        "phrase": "Bye, actually wait...",
+        "status": "ERROR",
+        "error": "API Error"
+    },
+    {
+        "phrase": "No wait I have to cancel my order",
+        "status": "ERROR",
+        "error": "API Error"
+    },
+    {
+        "phrase": "Thanks, but I want to return this",
+        "status": "ERROR",
+        "error": "API Error"
+    },
+    {
+        "phrase": "Thank you, where is my parcel",
+        "status": "ERROR",
+        "error": "API Error"
+    },
+    {
+        "phrase": "Allah hafiz, oh one more thing",
+        "status": "ERROR",
+        "error": "API Error"
+    },
+    {
+        "phrase": "bye... why is my order late?",
+        "status": "ERROR",
+        "error": "API Error"
+    }
+]

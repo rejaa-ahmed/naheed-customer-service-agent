@@ -9,6 +9,7 @@ class FlowResponse(BaseModel):
     updated_state: Dict[str, Any] = {}
     tool_request: Optional[str] = None
     tool_args: Optional[Dict[str, Any]] = None
+    end_conversation: bool = False
 
 class BaseFlow:
     """Interface for all conversational flows."""

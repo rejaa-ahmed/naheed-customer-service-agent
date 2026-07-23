@@ -16,6 +16,14 @@ class ConversationState(BaseModel):
     # most recent message. Refreshed on every turn by the IntentParser/Router.
     priority: str = "low"
     mood: str = "happy"
+    
+    # Meta counters for escalation
+    consecutive_unknown_count: int = 0
+    consecutive_failure_count: int = 0
+    
+    # Verification state
+    customer_verified: bool = False
+    verification_attempts: int = 0
 
 class StateManager:
     def __init__(self, timeout_seconds: int = 300):
