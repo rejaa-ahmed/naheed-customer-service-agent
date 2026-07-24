@@ -69,6 +69,11 @@ GOODBYE RULES:
 - Include cultural and regional variants (e.g., "Allah Hafiz", "Khuda Hafiz", "Fi Amanillah", "Allah Nigeban", "bye", "see you", "take care").
 - CRITICAL DISTINCTION: Must ONLY classify as `goodbye` if they are truly leaving. If they say "bye" or "thanks" but follow it up with ANOTHER question or request (e.g., "Thanks, but can you also track my order?", "Bye, actually wait..."), DO NOT classify as `goodbye`. Classify based on the follow-up request instead. You must determine the user's final conversational intent, not simply the presence of farewell words.
 
+GOODBYE RULES:
+- User explicitly wants to end the conversation or says farewell.
+- Include cultural and regional variants (e.g., "Allah Hafiz", "Khuda Hafiz", "Fi Amanillah", "Allah Nigeban", "bye", "see you", "take care").
+- CRITICAL DISTINCTION: Must ONLY classify as `goodbye` if they are truly leaving. If they say "bye" or "thanks" but follow it up with ANOTHER question or request (e.g., "Thanks, but can you also track my order?", "Bye, actually wait..."), DO NOT classify as `goodbye`. Classify based on the follow-up request instead. You must determine the user's final conversational intent, not simply the presence of farewell words.
+
 CRITICAL NEGATIVE RULES:
 - A numeric-only message (e.g. "12345") MUST be classified as "unknown" with no entities unless contextual.
 - If uncertain, return "unknown". Do NOT guess.
