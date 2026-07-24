@@ -41,6 +41,10 @@ class IntentRouter:
             "worst", "terrible", "disappointed", "upset", "angry", "frustrated",
             "ridiculous", "unacceptable", "annoyed", "not happy", "very bad",
             "waste of time", "keep happening", "again and again",
+            # Signals that a problem is persisting/being ignored - genuine
+            # frustration even without an explicit "angry" word.
+            "still not resolved", "not resolved yet", "koi jawab nahi",
+            "abhi tak koi jawab", "how many times",
         ]
         # Rude/insulting language directed at the agent or company - always a strong
         # signal of anger, independent of whether an order/product is even mentioned.
@@ -66,14 +70,14 @@ class IntentRouter:
             any(kw in message_lower for kw in self.high_priority_keywords) or is_insult or is_shouting
         ) else "low"
 
+        # Mood is judged independently of priority - a message can be high
+        # priority (e.g. a routine complaint or refund request) while still
+        # being calm/neutral in tone. Only genuine negative-emotion language
+        # (frustration/anger words, insults, or shouting) makes it "sad".
         mood = "sad" if (
             any(kw in message_lower for kw in self.sad_mood_keywords) or is_insult or is_shouting
         ) else "happy"
 
-        # A high-priority complaint-style message defaults to a sad mood unless
-        # explicitly contradicted by positive wording.
-        if priority == "high" and mood == "happy":
-            mood = "sad"
         return priority, mood
 
     def route(self, message: str) -> IntentResult:

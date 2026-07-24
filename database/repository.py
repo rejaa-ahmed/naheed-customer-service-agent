@@ -357,7 +357,7 @@ class OrderRepository:
             logger.error(f"Database error while fetching order status {increment_id}: {e}")
             raise RuntimeError(f"Database error: {e}") from e
 
-    def get_delivery_date(self, increment_id: str) -> Optional[datetime]:
+    def get_delivery_date(self, increment_id: str) -> Optional[datetime.datetime]:
         """Fetch the actual completion/delivery datetime (completed_at) for the given order increment ID.
         Returns None if not found or if the field is unavailable."""
         query = """
