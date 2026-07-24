@@ -1,15 +1,20 @@
 import logging
 from typing import Dict, Any
 from database.repository import OrderRepository, ComplaintRepository
+from services.audit_service import AuditService
+from core.audit_events import AuditEvent, AuditCategory, AuditOutcome
+import time
 
 logger = logging.getLogger(__name__)
 
 class ComplaintService:
-    def __init__(self, complaint_repository=None, order_repository=None):
+    def __init__(self, complaint_repository=None, order_repository=None, audit_service=None):
         self.complaint_repository = complaint_repository or ComplaintRepository()
         self.order_repository = order_repository or OrderRepository()
+        self.audit_service = audit_service or AuditService()
 
-    def create_complaint(self, order_id: str, complaint_type: str, details: str, image_url: str = None) -> Dict[str, Any]:
+    def create_complaint(self, order_id: str, complaint_type: str, details: str, image_url: str = None, priority: str = "low", mood: str = "happy") -> Dict[str, Any]:
+        start_time = time.time()
         try:
             # Check for duplicate complaint type
             if self.complaint_repository.has_existing_complaint_type(order_id, complaint_type):
@@ -40,11 +45,24 @@ class ComplaintService:
                 phone=phone,
                 subject=subject,
                 complain=details,
-                complain_type=complaint_type
+                complain_type=complaint_type,
+                priority=priority or "low",
+                mood=mood or "happy"
             )
 
             if image_url:
                 self.complaint_repository.add_ticket_attachment(ticket_no, image_url)
+
+            duration_ms = int((time.time() - start_time) * 1000)
+            self.audit_service.log_event(
+                event_type=AuditEvent.COMPLAINT_CREATION,
+                category=AuditCategory.BUSINESS,
+                outcome=AuditOutcome.SUCCESS,
+                actor="user",
+                duration_ms=duration_ms,
+                order_id=order_id,
+                complaint_id=str(ticket_no)
+            )
 
             return {
                 "success": True,
@@ -52,7 +70,17 @@ class ComplaintService:
                 "message": f"Your complaint has been successfully registered. Ticket Number: #{ticket_no}. We will get back to you soon."
             }
         except Exception as e:
+            duration_ms = int((time.time() - start_time) * 1000)
             logger.error(f"Error creating complaint in service: {e}")
+            self.audit_service.log_event(
+                event_type=AuditEvent.COMPLAINT_CREATION,
+                category=AuditCategory.BUSINESS,
+                outcome=AuditOutcome.FAILURE,
+                actor="user",
+                duration_ms=duration_ms,
+                order_id=order_id,
+                metadata={"error_details": str(e)}
+            )
             return {
                 "success": False,
                 "message": f"Failed to register complaint: {e}"

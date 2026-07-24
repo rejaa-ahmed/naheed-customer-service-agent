@@ -64,6 +64,36 @@ class TestIntentParser(unittest.TestCase):
         result = self.parser.parse_intent("Mera order kidhar hai")
         self.assertEqual(result.intent, "order_tracking")
         
+    def test_complaint_tracking_english(self):
+        self.mock_factory.generate_content_with_failover.return_value = '{"intent": "complaint_tracking", "confidence": 0.98, "entities": {}}'
+        result = self.parser.parse_intent("What is the status of my complaint?")
+        self.assertEqual(result.intent, "complaint_tracking")
+
+    def test_complaint_tracking_roman_urdu(self):
+        self.mock_factory.generate_content_with_failover.return_value = '{"intent": "complaint_tracking", "confidence": 0.98, "entities": {}}'
+        result = self.parser.parse_intent("complaint ki thi uska kya hua")
+        self.assertEqual(result.intent, "complaint_tracking")
+
+    def test_complaint_tracking_urdu(self):
+        self.mock_factory.generate_content_with_failover.return_value = '{"intent": "complaint_tracking", "confidence": 0.98, "entities": {}}'
+        result = self.parser.parse_intent("میری شکایت کا کیا بنا؟")
+        self.assertEqual(result.intent, "complaint_tracking")
+
+    def test_complaint_tracking_mixed(self):
+        self.mock_factory.generate_content_with_failover.return_value = '{"intent": "complaint_tracking", "confidence": 0.98, "entities": {}}'
+        result = self.parser.parse_intent("maine last week complaint register ki thi, any update on that?")
+        self.assertEqual(result.intent, "complaint_tracking")
+        
+    def test_complaint_creation_roman_urdu(self):
+        self.mock_factory.generate_content_with_failover.return_value = '{"intent": "complaint", "confidence": 0.98, "entities": {}}'
+        result = self.parser.parse_intent("complaint karni hai")
+        self.assertEqual(result.intent, "complaint")
+
+    def test_complaint_tracking_ambiguous_follow_up(self):
+        self.mock_factory.generate_content_with_failover.return_value = '{"intent": "complaint_tracking", "confidence": 0.98, "entities": {}}'
+        result = self.parser.parse_intent("us complaint ka kya bana")
+        self.assertEqual(result.intent, "complaint_tracking")
+        
     def test_invalid_json(self):
         self.mock_factory.generate_content_with_failover.return_value = '{intent: greeting, confidence: 0.9}' # missing quotes
         with self.assertRaises(IntentParserError) as e:

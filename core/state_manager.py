@@ -12,6 +12,18 @@ class ConversationState(BaseModel):
     entities: Dict[str, Any] = Field(default_factory=dict)
     last_assistant_message: Optional[str] = None
     timestamp: float = Field(default_factory=time.time)
+    # AI-judged priority ("high"/"low") and mood ("happy"/"sad") from the customer's
+    # most recent message. Refreshed on every turn by the IntentParser/Router.
+    priority: str = "low"
+    mood: str = "happy"
+    
+    # Meta counters for escalation
+    consecutive_unknown_count: int = 0
+    consecutive_failure_count: int = 0
+    
+    # Verification state
+    customer_verified: bool = False
+    verification_attempts: int = 0
 
 class StateManager:
     def __init__(self, timeout_seconds: int = 300):
@@ -62,12 +74,29 @@ class StateManager:
         
     def check_cancellation(self, message: str) -> bool:
         """Checks if the user wants to cancel the current workflow."""
-        cancel_words = ["cancel", "start over", "never mind", "nevermind", "forget it", "reset", "abort"]
+        import re
         msg_lower = message.lower().strip()
-        # Ensure it's not a substring of a normal word by checking exact match or prefix/suffix handling.
-        # But a simple `in` works well for this Phase 3 requirement.
-        return any(word in msg_lower for word in cancel_words)
         
+        # Ignore if context is about cancelling an order (business request) rather than chatbot flow
+        if re.search(r'\bcancel\s+(?:my\s+|the\s+|this\s+|whole\s+|our\s+)*order\b', msg_lower):
+            return False
+        if re.search(r'\border\s+(?:cancellation|cancel)\b', msg_lower):
+            return False
+            
+        # Check for multi-word phrases first
+        for phrase in ["start over", "never mind", "forget it"]:
+            if phrase in msg_lower:
+                if re.search(r'\b' + re.escape(phrase) + r'\b', msg_lower):
+                    return True
+                    
+        # Check for single-word exact matches
+        words = re.findall(r'\b\w+\b', msg_lower)
+        for word in words:
+            if word in {"cancel", "nevermind", "reset", "abort"}:
+                return True
+                
+        return False
+
     def clear_state(self, session_id: str = "default"):
         """Resets the conversation to a clean slate."""
         if session_id in self.sessions:

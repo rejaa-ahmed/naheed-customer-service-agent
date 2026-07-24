@@ -11,6 +11,10 @@ MISSING_SUBCATEGORIES = ["Missing Item", "Missing Accessories"]
 WRONG_SUBCATEGORIES = ["Wrong Product", "Damaged Product", "Expired Product", "Leak product"]
 REFUND_SUBCATEGORIES = ["Refund", "Warranty Claim", "Cashback", "Change of Mind"]
 GENERAL_SUBCATEGORIES = ["Order Info", "Complaint Info", "Extra Parcel", "Delay Delivery", "General"]
+# Catch-all category used when a customer reports more than one distinct
+# complaint (e.g. a missing item AND a wrong item) in the same message, or
+# when their description can't be pinned to a single category after a retry.
+MISCELLANEOUS_SUBCATEGORIES = ["Miscellaneous"]
 
 # Wrong-category sub-categories that require a photo upload
 WRONG_NEEDS_IMAGE = {"Wrong Product", "Damaged Product", "Expired Product", "Leak product"}
@@ -186,61 +190,122 @@ class ComplaintFlow(BaseFlow):
             # Fallback keyword matching if LLM didn't resolve them
             if not category or not sub_category:
                 msg_lower = user_msg.lower()
-                # Check subcategories first
+
+                # First, detect how many DISTINCT categories are referenced in this
+                # single message. If the customer describes more than one complaint
+                # at once (e.g. "item is missing and the other one is damaged"),
+                # route the whole thing to the Miscellaneous catch-all category
+                # instead of forcing it into just one bucket.
+                detected_categories = set()
                 for cat, sub_list in [
                     ("Missing", MISSING_SUBCATEGORIES),
                     ("Wrong", WRONG_SUBCATEGORIES),
                     ("Refund", REFUND_SUBCATEGORIES),
                     ("General", GENERAL_SUBCATEGORIES)
                 ]:
-                    matched = _match_subcategory(msg_lower, sub_list)
-                    if matched:
-                        category = cat
-                        sub_category = matched
-                        break
+                    if _match_subcategory(msg_lower, sub_list):
+                        detected_categories.add(cat)
 
-                # If no subcategory matched, check category keywords
-                if not category:
-                    if "missing" in msg_lower or "khoya" in msg_lower or "nahi mila" in msg_lower or "kam" in msg_lower:
-                        category = "Missing"
-                        sub_category = "Missing Item" # Default subcategory
-                    elif "wrong" in msg_lower or "kharab" in msg_lower or "expired" in msg_lower or "leak" in msg_lower or "damaged" in msg_lower:
-                        category = "Wrong"
-                        if "leak" in msg_lower:
-                            sub_category = "Leak product"
-                        elif "expired" in msg_lower:
-                            sub_category = "Expired Product"
-                        elif "damaged" in msg_lower or "broken" in msg_lower or "kharab" in msg_lower:
-                            sub_category = "Damaged Product"
-                        else:
-                            sub_category = "Wrong Product"
-                    elif "refund" in msg_lower or "paisa" in msg_lower or "cashback" in msg_lower or "warranty" in msg_lower:
-                        category = "Refund"
-                        if "warranty" in msg_lower:
-                            sub_category = "Warranty Claim"
-                        elif "cashback" in msg_lower:
-                            sub_category = "Cashback"
-                        elif "change of mind" in msg_lower:
-                            sub_category = "Change of Mind"
-                        else:
-                            sub_category = "Refund"
-                    elif "delay" in msg_lower or "delivery" in msg_lower or "info" in msg_lower or "packet" in msg_lower:
-                        category = "General"
-                        if "delay" in msg_lower:
-                            sub_category = "Delay Delivery"
-                        elif "extra" in msg_lower:
-                            sub_category = "Extra Parcel"
-                        else:
-                            sub_category = "General"
+                if "missing" in msg_lower or "khoya" in msg_lower or "nahi mila" in msg_lower or "kam" in msg_lower:
+                    detected_categories.add("Missing")
+                if "wrong" in msg_lower or "kharab" in msg_lower or "expired" in msg_lower or "leak" in msg_lower or "damaged" in msg_lower or "broken" in msg_lower:
+                    detected_categories.add("Wrong")
+                if "refund" in msg_lower or "paisa" in msg_lower or "cashback" in msg_lower or "warranty" in msg_lower:
+                    detected_categories.add("Refund")
+                if "delay" in msg_lower or "delivery" in msg_lower or "info" in msg_lower or "packet" in msg_lower or "extra" in msg_lower:
+                    detected_categories.add("General")
 
-            # If still not classified, ask the user to clarify
+                if len(detected_categories) > 1:
+                    category = "Miscellaneous"
+                    sub_category = "Miscellaneous"
+                else:
+                    # Check subcategories first
+                    for cat, sub_list in [
+                        ("Missing", MISSING_SUBCATEGORIES),
+                        ("Wrong", WRONG_SUBCATEGORIES),
+                        ("Refund", REFUND_SUBCATEGORIES),
+                        ("General", GENERAL_SUBCATEGORIES)
+                    ]:
+                        matched = _match_subcategory(msg_lower, sub_list)
+                        if matched:
+                            category = cat
+                            sub_category = matched
+                            break
+
+                    # If no subcategory matched, check category keywords
+                    if not category:
+                        if "missing" in msg_lower or "khoya" in msg_lower or "nahi mila" in msg_lower or "kam" in msg_lower:
+                            category = "Missing"
+                            sub_category = "Missing Item" # Default subcategory
+                        elif "wrong" in msg_lower or "kharab" in msg_lower or "expired" in msg_lower or "leak" in msg_lower or "damaged" in msg_lower:
+                            category = "Wrong"
+                            if "leak" in msg_lower:
+                                sub_category = "Leak product"
+                            elif "expired" in msg_lower:
+                                sub_category = "Expired Product"
+                            elif "damaged" in msg_lower or "broken" in msg_lower or "kharab" in msg_lower:
+                                sub_category = "Damaged Product"
+                            else:
+                                sub_category = "Wrong Product"
+                        elif "refund" in msg_lower or "paisa" in msg_lower or "cashback" in msg_lower or "warranty" in msg_lower:
+                            category = "Refund"
+                            if "warranty" in msg_lower:
+                                sub_category = "Warranty Claim"
+                            elif "cashback" in msg_lower:
+                                sub_category = "Cashback"
+                            elif "change of mind" in msg_lower:
+                                sub_category = "Change of Mind"
+                            else:
+                                sub_category = "Refund"
+                        elif "delay" in msg_lower or "delivery" in msg_lower or "info" in msg_lower or "packet" in msg_lower:
+                            category = "General"
+                            if "delay" in msg_lower:
+                                sub_category = "Delay Delivery"
+                            elif "extra" in msg_lower:
+                                sub_category = "Extra Parcel"
+                            else:
+                                sub_category = "General"
+
+            # If still not classified, ask the user to clarify - but only once.
+            # A prior version of this flow could re-ask indefinitely if the
+            # customer's wording never matched any keyword list (most often
+            # when they were describing more than one issue in an unusual
+            # phrasing). Bound the retries: after one failed clarification
+            # attempt, stop asking and register it as a Miscellaneous
+            # complaint using their own words, so the user is never trapped.
             if not category or not sub_category:
+                attempts = int(state.entities.get("complaint_desc_attempts", 0)) + 1
+                if attempts >= 2:
+                    order_id = state.entities.get("order_id")
+                    details = f"Sub-category: Miscellaneous. Details: {user_msg}"
+                    return FlowResponse(
+                        status="completed",
+                        response="",
+                        updated_state={
+                            "current_flow": None,
+                            "current_stage": None,
+                            "entities": {
+                                **state.entities,
+                                "complaint_category": "Miscellaneous",
+                                "complaint_sub_category": "Miscellaneous",
+                                "complaint_desc_attempts": 0
+                            }
+                        },
+                        tool_request="create_complaint",
+                        tool_args={
+                            "order_id": order_id,
+                            "complaint_type": "Miscellaneous",
+                            "details": details,
+                            "image_url": None
+                        }
+                    )
                 return FlowResponse(
                     status="waiting_for_input",
                     response="Could you please describe the issue in more detail? (e.g., did you receive a wrong/damaged item, is an item missing, or is it related to a refund/delivery delay?)",
                     updated_state={
                         "current_flow": "complaint",
-                        "current_stage": "waiting_for_complaint_description"
+                        "current_stage": "waiting_for_complaint_description",
+                        "entities": {**state.entities, "complaint_desc_attempts": attempts}
                     }
                 )
 
@@ -376,7 +441,8 @@ class ComplaintFlow(BaseFlow):
                             **state.entities,
                             "complaint_category": None,
                             "complaint_sub_category": None,
-                            "unavailable_items": None
+                            "unavailable_items": None,
+                            "complaint_desc_attempts": 0
                         }
                     }
                 )

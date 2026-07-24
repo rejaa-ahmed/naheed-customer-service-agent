@@ -103,7 +103,7 @@ class TestOrderServiceModificationCheck(unittest.TestCase):
         res = self.service.check_order_modifiable("100028")
         self.assertTrue(res["success"])
         self.assertTrue(res["modifiable"])
-        self.assertIn("Connecting you to a live agent", res["message"])
+        self.assertIn("What would you like to add or remove in your order? Connecting you to a live agent to modify it...", res["message"])
 
 if __name__ == '__main__':
     unittest.main()

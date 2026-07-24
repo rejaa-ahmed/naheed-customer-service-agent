@@ -2,6 +2,8 @@ import logging
 from typing import Dict, Any
 
 from database.repository import OrderRepository, OrderNotFoundError
+from services.audit_service import AuditService
+from core.audit_events import AuditEvent, AuditCategory, AuditOutcome
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -9,9 +11,10 @@ logger = get_logger(__name__)
 from datetime import datetime
 
 class OrderService:
-    def __init__(self, repository: OrderRepository = None):
+    def __init__(self, repository: OrderRepository = None, audit_service: AuditService = None):
         # Allow injecting a mock repository for testing
         self.repository = repository or OrderRepository()
+        self.audit_service = audit_service or AuditService()
 
     def _get_courier_url(self, carrier_code: str, tracking_number: str) -> str:
         if not carrier_code or not tracking_number:
@@ -47,8 +50,20 @@ class OrderService:
             }
 
         # 2 & 3. Call Repository and Handle Responses
+        import time
+        start_time = time.time()
         try:
             parent_order = self.repository.get_order_by_increment_id(increment_id)
+            duration_ms = int((time.time() - start_time) * 1000)
+            
+            self.audit_service.log_event(
+                event_type=AuditEvent.ORDER_TRACKING,
+                category=AuditCategory.BUSINESS,
+                outcome=AuditOutcome.SUCCESS,
+                actor="user",
+                duration_ms=duration_ms,
+                order_id=increment_id
+            )
             
             # Select active order (child if exists, else parent)
             if parent_order.child_orders:
@@ -157,20 +172,41 @@ class OrderService:
                 }
             }
             
-        except OrderNotFoundError:
-            logger.info(f"OrderService: Order {increment_id} not found.")
+        except OrderNotFoundError as e:
+            duration_ms = int((time.time() - start_time) * 1000)
+            self.audit_service.log_event(
+                event_type=AuditEvent.ORDER_TRACKING,
+                category=AuditCategory.BUSINESS,
+                outcome=AuditOutcome.FAILURE,
+                actor="user",
+                duration_ms=duration_ms,
+                order_id=increment_id,
+                error_code=ErrorCode.ERR_RECORD_NOT_FOUND,
+                metadata={"error_details": str(e)}
+            )
             return {
                 "success": False,
-                "message": "We couldn't find an order with that ID. Please check and try again.",
+                "message": f"Order {increment_id} not found or you don't have access to it.",
                 "status": None,
                 "order": None
             }
             
         except Exception as e:
-            logger.error(f"OrderService encountered an error fetching {increment_id}: {e}")
+            duration_ms = int((time.time() - start_time) * 1000)
+            logger.error(f"Error fetching order: {e}")
+            self.audit_service.log_event(
+                event_type=AuditEvent.ORDER_TRACKING,
+                category=AuditCategory.BUSINESS,
+                outcome=AuditOutcome.FAILURE,
+                actor="user",
+                duration_ms=duration_ms,
+                order_id=increment_id,
+                error_code=ErrorCode.ERR_UNKNOWN,
+                metadata={"error_details": str(e)}
+            )
             return {
                 "success": False,
-                "message": "We are currently experiencing technical difficulties. Please try again later.",
+                "message": "Technical difficulties.",
                 "status": None,
                 "order": None
             }
@@ -217,7 +253,7 @@ class OrderService:
                 return {
                     "success": True,
                     "modifiable": True,
-                    "message": f"Your order #{increment_id} is currently in '{active_order.status}' status. Connecting you to a live agent to modify it..."
+                    "message": f"Your order #{increment_id} is currently in '{active_order.status}' status and can be modified. What would you like to add or remove in your order? Connecting you to a live agent to modify it..."
                 }
         except OrderNotFoundError:
             logger.info(f"OrderService: Order {increment_id} not found for modifiability check.")
@@ -233,3 +269,96 @@ class OrderService:
                 "modifiable": False,
                 "message": "We are currently experiencing technical difficulties. Please try again later."
             }
+
+    def get_order_status(self, increment_id: str) -> Dict[str, Any]:
+        """Retrieves only the status of the active order."""
+        if not increment_id or not str(increment_id).strip():
+            return {"success": False, "status": None, "message": "Invalid Order ID."}
+            
+        try:
+            parent_order = self.repository.get_order_by_increment_id(increment_id.strip())
+            
+            if parent_order.child_orders:
+                active_order = next((c for c in parent_order.child_orders if c.increment_id == increment_id), parent_order.child_orders[0])
+            else:
+                active_order = parent_order
+                
+            return {
+                "success": True,
+                "status": active_order.status,
+                "state": active_order.state,
+                "message": ""
+            }
+        except OrderNotFoundError:
+            return {"success": False, "status": None, "message": "Order not found."}
+        except Exception as e:
+            logger.error(f"OrderService error in get_order_status for {increment_id}: {e}")
+            return {"success": False, "status": None, "message": "Technical difficulties."}
+
+    def verify_customer(self, increment_id: str, provided_phone: str) -> bool:
+        """
+        Normalizes and matches the provided phone number against the billing address phone.
+        """
+        db_phone = self.repository.get_order_phone(increment_id)
+        if not db_phone:
+            return False
+            
+        import re
+        def normalize_phone(phone: str) -> str:
+            if not phone: return ""
+            digits = re.sub(r'\D', '', str(phone))
+            if digits.startswith('92') and len(digits) == 12:
+                return '0' + digits[2:]
+            elif len(digits) == 10 and not digits.startswith('0'):
+                return '0' + digits
+            return digits
+            
+        norm_db = normalize_phone(db_phone)
+        norm_provided = normalize_phone(provided_phone)
+        
+        is_match = (norm_db == norm_provided and bool(norm_db))
+        
+        self.audit_service.log_event(
+            event_type=AuditEvent.PHONE_VERIFICATION,
+            category=AuditCategory.SECURITY,
+            outcome=AuditOutcome.SUCCESS if is_match else AuditOutcome.FAILURE,
+            actor="user",
+            order_id=increment_id,
+            metadata={"verification_result": is_match}
+        )
+        
+        return is_match
+
+    def execute_cancellation(self, increment_id: str, cancel_reason: str = "Unknown reason") -> Dict[str, Any]:
+        """Executes the cancellation of the active order."""
+        if not increment_id or not str(increment_id).strip():
+            return {"success": False, "message": "Invalid Order ID."}
+            
+        import time
+        start_time = time.time()
+        try:
+            logger.info(f"OrderService: Executing cancellation for {increment_id} with reason: {cancel_reason}")
+            success = self.repository.cancel_order(increment_id.strip(), cancel_reason)
+            duration_ms = int((time.time() - start_time) * 1000)
+            
+            if success:
+                self.audit_service.log_event(
+                    event_type=AuditEvent.ORDER_CANCELLATION,
+                    category=AuditCategory.BUSINESS,
+                    outcome=AuditOutcome.SUCCESS,
+                    actor="user",
+                    duration_ms=duration_ms,
+                    order_id=increment_id
+                )
+                return {
+                    "success": True,
+                    "message": f"Your order #{increment_id} has been successfully cancelled."
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": "We couldn't cancel your order at this time. Please check the order ID or try again later."
+                }
+        except Exception as e:
+            logger.error(f"OrderService error in execute_cancellation for {increment_id}: {e}")
+            return {"success": False, "message": "We encountered an error while canceling your order. Please try again later."}

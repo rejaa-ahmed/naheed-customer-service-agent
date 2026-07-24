@@ -3,6 +3,8 @@ from typing import Optional
 from database.connection import DatabaseManager
 from database.schema import Order
 from utils.logger import get_logger
+import datetime
+from typing import Optional
 
 logger = get_logger(__name__)
 
@@ -45,6 +47,28 @@ class OrderRepository:
                 cursor.close()
                 return res["entity_id"] if res else None
         except Exception:
+            return None
+
+    def get_order_phone(self, increment_id: str) -> Optional[str]:
+        """
+        Retrieves the billing phone number for a given order increment_id.
+        """
+        query = """
+        SELECT a.telephone 
+        FROM sales_order_address a
+        JOIN sales_order o ON a.parent_id = o.entity_id
+        WHERE o.increment_id = %s AND a.address_type = 'billing'
+        LIMIT 1
+        """
+        try:
+            with DatabaseManager() as conn:
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute(query, (increment_id,))
+                res = cursor.fetchone()
+                cursor.close()
+                return res["telephone"] if res else None
+        except Exception as e:
+            logger.error(f"Error fetching order phone for {increment_id}: {e}")
             return None
 
     def get_items_by_entity_id(self, entity_id: int) -> list:
@@ -154,6 +178,7 @@ class OrderRepository:
             o.entity_id, 
             o.increment_id, 
             o.status,
+            o.state,
             o.relation_parent_id,
             o.relation_parent_real_id,
             a.delivery_due_date,
@@ -179,6 +204,7 @@ class OrderRepository:
             entity_id=result["entity_id"],
             increment_id=result["increment_id"],
             status=result["status"],
+            state=result["state"],
             estimated_delivery_datetime=result["delivery_due_date"],
             shipping_city=result["city"],
             recipient_name=f"{result['firstname'] or ''} {result['lastname'] or ''}".strip() if result['firstname'] or result['lastname'] else None,
@@ -331,7 +357,7 @@ class OrderRepository:
             logger.error(f"Database error while fetching order status {increment_id}: {e}")
             raise RuntimeError(f"Database error: {e}") from e
 
-    def get_delivery_date(self, increment_id: str) -> Optional[datetime]:
+    def get_delivery_date(self, increment_id: str) -> Optional[datetime.datetime]:
         """Fetch the actual completion/delivery datetime (completed_at) for the given order increment ID.
         Returns None if not found or if the field is unavailable."""
         query = """
@@ -353,29 +379,105 @@ class OrderRepository:
             logger.error(f"Error fetching delivery date for {increment_id}: {e}")
             return None
 
-class ComplaintRepository:
-    def create_complaint_ticket(
-        self, 
-        order_number: str, 
-        entity_id: int, 
-        name: str, 
-        email: str, 
-        phone: str, 
-        subject: str, 
-        complain: str, 
-        complain_type: str
-    ) -> int:
-        query = """
-        INSERT INTO nhd_complain_tickets (
-            order_number, entity_id, customer_name, customer_email, customer_phone, 
-            subject, complain, type, status, action_taken, refund_amount
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'New', '', '')
+    def cancel_order(self, increment_id: str, cancel_reason: str = "Unknown reason") -> bool:
+        """
+        Cancels an order by updating its state and status to 'canceled' in sales_order and sales_order_grid,
+        and inserts a history comment indicating cancellation.
         """
         try:
             with DatabaseManager() as conn:
-                logger.info(f"Creating complaint ticket for order {order_number}")
+                cursor = conn.cursor(dictionary=True)
+                
+                # 1. Retrieve entity_id, status, and state with FOR UPDATE to prevent race conditions
+                select_query = "SELECT entity_id, status, state FROM sales_order WHERE increment_id = %s FOR UPDATE"
+                cursor.execute(select_query, (increment_id,))
+                order_row = cursor.fetchone()
+                
+                if not order_row:
+                    logger.warning(f"Failed to cancel order {increment_id}: order not found.")
+                    conn.rollback()
+                    cursor.close()
+                    return False
+                
+                entity_id = order_row["entity_id"]
+                current_status = order_row["status"]
+                current_state = order_row["state"]
+                
+                # Defensive validation: Do not update if already canceled
+                if current_state == 'canceled' or current_status == 'canceled':
+                    logger.info(f"Order {increment_id} is already canceled in the database.")
+                    conn.rollback()
+                    cursor.close()
+                    return True
+                
+                cursor.close()
                 cursor = conn.cursor()
-                cursor.execute(query, (order_number, entity_id, name, email, phone, subject, complain, complain_type))
+                
+                # 2. Update sales_order
+                update_so_query = "UPDATE sales_order SET state = 'canceled', status = 'canceled', updated_at = NOW() WHERE entity_id = %s"
+                cursor.execute(update_so_query, (entity_id,))
+                
+                # 3. Update sales_order_grid
+                update_sog_query = "UPDATE sales_order_grid SET status = 'canceled', updated_at = NOW() WHERE entity_id = %s"
+                cursor.execute(update_sog_query, (entity_id,))
+                
+                # 4. Insert into sales_order_status_history
+                clean_reason = cancel_reason.replace('_', ' ').capitalize()
+                formatted_comment = f"Order cancelled by Naheed AI Chatbot.\n\nCustomer reason: {clean_reason}.\n\nCancelled automatically via AI Customer Support."
+                insert_history_query = """
+                INSERT INTO sales_order_status_history 
+                (parent_id, is_customer_notified, is_visible_on_front, comment, status, entity_name) 
+                VALUES (%s, 0, 0, %s, 'canceled', 'order')
+                """
+                logger.info(f"PRE-INSERT SQL: {insert_history_query}")
+                logger.info(f"PRE-INSERT PARAMS: parent_id={entity_id}, comment={formatted_comment}")
+                cursor.execute(insert_history_query, (entity_id, formatted_comment))
+                logger.info(f"POST-INSERT: cursor.rowcount={cursor.rowcount}, cursor.lastrowid={cursor.lastrowid}")
+                
+                conn.commit()
+                logger.info(f"Successfully cancelled order {increment_id} (entity_id={entity_id}) in database via transaction.")
+                cursor.close()
+                return True
+                
+        except Exception as e:
+            logger.exception(f"Database transaction error while cancelling order {increment_id}: {e}")
+            return False
+
+class ComplaintRepository:
+    def create_complaint_ticket(
+        self,
+        order_number: str,
+        entity_id: int,
+        name: str,
+        email: str,
+        phone: str,
+        subject: str,
+        complain: str,
+        complain_type: str,
+        priority: str = "low",
+        mood: str = "happy"
+    ) -> int:
+        # AI-judged urgency ("high"/"low") and customer mood ("happy"/"sad"), captured
+        # from the message that triggered this ticket. Stored in `priority`/`mood`
+        # columns on nhd_complain_tickets - see migrations/add_priority_mood_to_complain_tickets.sql
+        
+        # Determine priority on the basis of customer's mood
+        if mood.lower() in ["sad", "angry", "frustrated", "bad", "unhappy"]:
+            priority = "high"
+        elif mood.lower() == "happy":
+            priority = "low"
+
+        query = """
+        INSERT INTO nhd_complain_tickets (
+            order_number, entity_id, customer_name, customer_email, customer_phone, 
+            subject, complain, type, status, action_taken, refund_amount, priority
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'New', '', '', %s)
+        """
+        try:
+            with DatabaseManager() as conn:
+                logger.info(f"Creating complaint ticket for order {order_number} (priority={priority}, mood={mood})")
+                cursor = conn.cursor()
+                cursor.execute(query, (order_number, entity_id, name, email, phone, subject, complain, complain_type, priority))
                 conn.commit()
                 ticket_no = cursor.lastrowid
                 cursor.close()

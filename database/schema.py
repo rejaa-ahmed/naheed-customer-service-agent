@@ -7,6 +7,7 @@ class Order:
     entity_id: int
     increment_id: str
     status: str
+    state: Optional[str] = None
     estimated_delivery_datetime: Optional[datetime] = None
     shipping_city: Optional[str] = None
     recipient_name: Optional[str] = None

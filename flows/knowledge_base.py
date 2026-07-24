@@ -1,6 +1,28 @@
 GENERAL_POLICY_KB = {
     "delivery": {
         "title": "Delivery & Shipping Policy",
+        # Alternate names/phrasings customers use that should also map to this
+        # topic (e.g. "roadside pickup" or "express delivery" on their own,
+        # without the word "delivery"/"shipping" attached).
+        "keywords": [
+            "delivery", "shipping", "roadside pickup", "road-side pickup",
+            "road side pickup", "pickup", "express delivery", "express shipping",
+            "same day delivery", "same-day delivery"
+        ],
+        # Specific shipping-method phrases -> the exact bullet-point substring
+        # to answer with, instead of dumping the entire delivery policy.
+        # e.g. asking about "roadside pickup" should only return the
+        # Road-Side Pickup line, not Standard/Express/etc. as well.
+        "specific_topics": {
+            "roadside pickup": "road-side pickup",
+            "road-side pickup": "road-side pickup",
+            "road side pickup": "road-side pickup",
+            "pickup": "road-side pickup",
+            "express delivery": "express shipping",
+            "express shipping": "express shipping",
+            "same day delivery": "express shipping",
+            "same-day delivery": "express shipping",
+        },
         "sections": [
             {
                 "subtitle": "Karachi (including Bahria Town & adjoining areas)",

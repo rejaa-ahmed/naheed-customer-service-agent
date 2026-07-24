@@ -3,24 +3,16 @@ import time
 import json
 import uuid
 
-from ai.intent_parser import IntentParser
-from core.state_manager import StateManager
-from core.flow_manager import FlowManager
-from services.order_service import OrderService
+from core.conversation_manager import ConversationManager
+from utils.helpers import build_reassurance_prefix
 
 # Initialize session state for Streamlit
 if "session_id" not in st.session_state:
     st.session_state.session_id = str(uuid.uuid4())
 if "messages" not in st.session_state:
     st.session_state.messages = []
-if "state_manager" not in st.session_state:
-    st.session_state.state_manager = StateManager()
-if "intent_parser" not in st.session_state:
-    st.session_state.intent_parser = IntentParser()
-if "flow_manager" not in st.session_state:
-    st.session_state.flow_manager = FlowManager()
-if "order_service" not in st.session_state:
-    st.session_state.order_service = OrderService()
+if "conversation_manager" not in st.session_state:
+    st.session_state.conversation_manager = ConversationManager()
 if "debug_data" not in st.session_state:
     st.session_state.debug_data = {}
 if "processing" not in st.session_state:
@@ -42,7 +34,7 @@ with st.sidebar:
         st.rerun()
         
     if st.button("Clear State"):
-        st.session_state.state_manager.clear_state(st.session_state.session_id)
+        st.session_state.conversation_manager.state_manager.clear_state(st.session_state.session_id)
         st.success("State Cleared!")
         
     if st.button("Export Conversation Log"):
@@ -74,7 +66,7 @@ with chat_col:
     # Input
     user_input = st.chat_input("Type your message here...", disabled=st.session_state.processing)
     
-    current_state = st.session_state.state_manager.get_state(st.session_state.session_id)
+    current_state = st.session_state.conversation_manager.state_manager.get_state(st.session_state.session_id)
     if current_state.entities.get("show_upload") or current_state.current_stage == "waiting_for_image":
         uploaded_file = st.file_uploader("Upload wrong item image", type=["png", "jpg", "jpeg"])
         if uploaded_file is not None:
@@ -109,93 +101,23 @@ with chat_col:
             
         start_time = time.time()
         
-        # 1. State check
         session_id = st.session_state.session_id
-        sm: StateManager = st.session_state.state_manager
+        cm = st.session_state.conversation_manager
         
-        if sm.check_cancellation(current_input):
-            sm.clear_state(session_id)
-            response_text = "Conversation reset. How can I help you?"
-            st.session_state.debug_data = {"cancellation": True}
-        else:
-            sm.add_message(session_id, "user", current_input)
-            current_state = sm.get_state(session_id)
-            
-            # 2. Intent Parsing
-            try:
-                intent_result = st.session_state.intent_parser.parse_intent(current_input, state=current_state)
-                # Ensure entities is dict for debug panel
-                entities_dict = intent_result.entities if isinstance(intent_result.entities, dict) else intent_result.entities.model_dump()
-                sm.update_entities(session_id, entities_dict)
-                
-                # 3. Flow Manager Execution
-                refreshed_state = sm.get_state(session_id)
-                flow_response = st.session_state.flow_manager.execute_flow(intent_result, refreshed_state)
-                
-                # 4. State updates
-                if flow_response.status == "completed":
-                    sm.clear_state(session_id)
-                else:
-                    sm.update_state(session_id, flow_response.updated_state)
-                    
-                response_text = flow_response.response
-                
-                # Mock Tool Dispatch
-                if flow_response.tool_request == "track_order":
-                    order_id = flow_response.tool_args.get("order_id")
-                    service_response = st.session_state.order_service.track_order(order_id)
-                    response_text = service_response.get("message", "We encountered an issue checking your order.")
-                elif flow_response.tool_request == "modify_order":
-                    order_id = flow_response.tool_args.get("order_id")
-                    service_response = st.session_state.order_service.check_order_modifiable(order_id)
-                    response_text = service_response.get("message", "We encountered an issue checking your order status.")
-                    if not service_response.get("success"):
-                        st.session_state.state_manager.update_state(st.session_state.session_id, {
-                            "current_flow": "modify_order",
-                            "waiting_for_order_id": True
-                        })
-                elif flow_response.tool_request == "create_complaint":
-                    order_id = flow_response.tool_args.get("order_id")
-                    complaint_type = flow_response.tool_args.get("complaint_type")
-                    details = flow_response.tool_args.get("details")
-                    image_url = flow_response.tool_args.get("image_url")
-                    
-                    if "complaint_service" not in st.session_state:
-                        from services.complaint_service import ComplaintService
-                        st.session_state.complaint_service = ComplaintService()
-                        
-                    service_response = st.session_state.complaint_service.create_complaint(
-                        order_id=order_id,
-                        complaint_type=complaint_type,
-                        details=details,
-                        image_url=image_url
-                    )
-                    ticket_msg = service_response.get("message", "")
-                    # Preserve the flow's rich response (e.g. COD/refund status message)
-                    # and append the ticket confirmation instead of overwriting it.
-                    if response_text:
-                        response_text = f"{response_text}\n\n{ticket_msg}"
-                    else:
-                        response_text = ticket_msg
-                    
-                latency = time.time() - start_time
-                
-                st.session_state.debug_data = {
-                    "latency": f"{latency:.2f}s",
-                    "intent": intent_result.intent,
-                    "confidence": intent_result.confidence,
-                    "entities": entities_dict,
-                    "flow_status": flow_response.status,
-                    "tool_request": flow_response.tool_request,
-                    "tool_args": flow_response.tool_args,
-                    "raw_json": intent_result.model_dump()
-                }
-                
-            except Exception as e:
-                response_text = "An error occurred connecting to the AI."
-                st.session_state.debug_data = {"error": str(e)}
+        try:
+            response_text, debug_data = cm.process_message_with_debug(current_input, session_id)
+            latency = time.time() - start_time
+            debug_data["latency"] = f"{latency:.2f}s"
+            st.session_state.debug_data = debug_data
+        except Exception as e:
+            response_text = "An error occurred processing your message."
+            st.session_state.debug_data = {"error": str(e)}
         
-        sm.add_message(session_id, "assistant", response_text)
+        # Note: cm.process_message_with_debug already adds the assistant message to StateManager.
+        # We just need to append it to the Streamlit local cache.
+        # Actually, cm also adds the user message! So we need to stop adding it twice?
+        # Wait, developer_console added it in line 110: st.session_state.messages.append(...)
+        # So we just append the assistant response here:
         st.session_state.messages.append({"role": "assistant", "content": response_text})
         
         with st.chat_message("assistant"):
@@ -211,7 +133,7 @@ with chat_col:
 with debug_col:
     st.subheader("Debug Panel")
     
-    current_state = st.session_state.state_manager.get_state(st.session_state.session_id)
+    current_state = st.session_state.conversation_manager.state_manager.get_state(st.session_state.session_id)
     debug = st.session_state.debug_data
     
     if show_internal_state:
@@ -221,13 +143,25 @@ with debug_col:
             st.write(f"**Current Stage:** {current_state.current_stage}")
             st.write(f"**Waiting for Order ID:** {current_state.waiting_for_order_id}")
             st.write("**Extracted Entities:**", current_state.entities)
+            st.write(f"**Session Priority:** {current_state.priority}")
+            st.write(f"**Session Mood:** {current_state.mood}")
             
+    if debug.get("used_fallback_router"):
+        st.warning(f"All configured LLM providers failed - used the rule-based fallback router.\n\nLLM error: {debug.get('llm_error')}")
+    if debug.get("error"):
+        st.error(f"Unexpected error: {debug.get('error')}")
+
     if show_intent_parser and "intent" in debug:
         with st.expander("Intent Parser Output", expanded=True):
             st.write(f"**Response Latency:** {debug.get('latency')}")
             st.write(f"**Detected Intent:** {debug.get('intent')}")
             st.write(f"**Confidence Score:** {debug.get('confidence')}")
+            st.write(f"**Source:** {'Rule-based fallback' if debug.get('used_fallback_router') else 'AI (LLM)'}")
             st.write("**Parsed Entities:**", debug.get('entities'))
+            priority_label = "\U0001F534 High" if debug.get("priority") == "high" else "\U0001F7E2 Low"
+            mood_label = "\U0001F60A Happy" if debug.get("mood") == "happy" else "\U0001F61E Sad"
+            st.write(f"**Priority:** {priority_label}")
+            st.write(f"**Customer Mood:** {mood_label}")
             
     if show_flow_manager and "flow_status" in debug:
         with st.expander("FlowManager Output", expanded=True):
