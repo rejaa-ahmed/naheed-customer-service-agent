@@ -57,7 +57,7 @@ class OrderRepository:
         SELECT a.telephone 
         FROM sales_order_address a
         JOIN sales_order o ON a.parent_id = o.entity_id
-        WHERE o.increment_id = %s AND a.address_type = 'billing'
+        WHERE o.increment_id = %s AND a.address_type = 'shipping'
         LIMIT 1
         """
         try:
