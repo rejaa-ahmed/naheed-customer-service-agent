@@ -471,7 +471,7 @@ class ComplaintRepository:
         INSERT INTO nhd_complain_tickets (
             order_number, entity_id, customer_name, customer_email, customer_phone, 
             subject, complain, type, status, action_taken, refund_amount, priority
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'New', '', '', %s)
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'Pre-Ticket', '', '', %s)
         """
         try:
             with DatabaseManager() as conn:
@@ -491,7 +491,7 @@ class ComplaintRepository:
         query = """
         INSERT INTO nhd_complain_tickets_attachments_info (
             ticket_no, image_url, status
-        ) VALUES (%s, %s, 'New')
+        ) VALUES (%s, %s, 'Pre-Ticket')
         """
         try:
             with DatabaseManager() as conn:
