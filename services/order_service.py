@@ -4,6 +4,7 @@ from typing import Dict, Any
 from database.repository import OrderRepository, OrderNotFoundError
 from services.audit_service import AuditService
 from core.audit_events import AuditEvent, AuditCategory, AuditOutcome
+from core.error_codes import ErrorCode
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -93,12 +94,14 @@ class OrderService:
                 
             logger.info(f"Order type: {'External' if is_external else 'Karachi'}")
 
+            status_label = self.repository.get_status_label(active_order.status)
+            
             # 5. Format response message
             lines = [
                 "Order ID:",
                 f"{active_order.increment_id}",
                 "\nShipment Status:",
-                f"{active_order.status}"
+                f"{status_label}"
             ]
             
             if eta_str:
@@ -243,17 +246,18 @@ class OrderService:
                 active_order = parent_order
                 
             status = active_order.status.strip().lower() if active_order.status else ""
+            status_label = self.repository.get_status_label(active_order.status)
             if status in ["packed", "shipped", "complete"]:
                 return {
                     "success": True,
                     "modifiable": False,
-                    "message": "We are sorry, your order has already been packed or shipped and therefore cannot be modified."
+                    "message": f"We are sorry, your order has already been packed or shipped (current status: '{status_label}') and therefore cannot be modified."
                 }
             else:
                 return {
                     "success": True,
                     "modifiable": True,
-                    "message": f"Your order #{increment_id} is currently in '{active_order.status}' status and can be modified. What would you like to add or remove in your order? Connecting you to a live agent to modify it..."
+                    "message": f"Your order #{increment_id} is currently in '{status_label}' status and can be modified. What would you like to add or remove in your order? Connecting you to a live agent to modify it..."
                 }
         except OrderNotFoundError:
             logger.info(f"OrderService: Order {increment_id} not found for modifiability check.")

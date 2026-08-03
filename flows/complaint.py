@@ -9,7 +9,7 @@ from datetime import datetime
 # --- Category / sub-category taxonomy ---
 MISSING_SUBCATEGORIES = ["Missing Item", "Missing Accessories"]
 WRONG_SUBCATEGORIES = ["Wrong Product", "Damaged Product", "Expired Product", "Leak product"]
-REFUND_SUBCATEGORIES = ["Refund", "Warranty Claim", "Cashback", "Change of Mind"]
+REFUND_SUBCATEGORIES = ["Refund", "Warranty Claim", "Cashback", "Change of Mind", "Exchange"]
 GENERAL_SUBCATEGORIES = ["Order Info", "Complaint Info", "Extra Parcel", "Delay Delivery", "General"]
 # Catch-all category used when a customer reports more than one distinct
 # complaint (e.g. a missing item AND a wrong item) in the same message, or
@@ -87,27 +87,39 @@ class ComplaintFlow(BaseFlow):
                     if resolved_id != order_id:
                         new_entities["parent_order_id"] = order_id
                     
-                    # Check delivery date for 7-day return policy
-                    delivery_date = self.order_repository.get_delivery_date(resolved_id)
-                    if delivery_date and isinstance(delivery_date, datetime):
-                        days_passed = (datetime.now() - delivery_date).days
-                        if days_passed >= 7:
-                            return FlowResponse(
-                                status="completed",
-                                response="We are sorry, but more than 7 days have passed since the delivery of your order. According to Naheed's return policy, the product cannot be returned. We apologize for any inconvenience.",
-                                updated_state={"current_flow": None, "current_stage": None}
-                            )
-                    # Direct to description collection instead of category menu
-                    return FlowResponse(
-                        status="waiting_for_input",
-                        response="Order ID verified. Please describe your complaint or issue in detail.",
-                        updated_state={
-                            "current_flow": "complaint",
-                            "current_stage": "waiting_for_complaint_description",
-                            "waiting_for_order_id": False,
-                            "entities": new_entities
-                        }
-                    )
+                    if getattr(state, "customer_verified", False):
+                        # Check delivery date for 7-day return policy
+                        delivery_date = self.order_repository.get_delivery_date(resolved_id)
+                        if delivery_date and isinstance(delivery_date, datetime):
+                            days_passed = (datetime.now() - delivery_date).days
+                            if days_passed >= 7:
+                                return FlowResponse(
+                                    status="completed",
+                                    response="We are sorry, but more than 7 days have passed since the delivery of your order. According to Naheed's return policy, the product cannot be returned. We apologize for any inconvenience.",
+                                    updated_state={"current_flow": None, "current_stage": None}
+                                )
+                        # Direct to description collection instead of category menu
+                        return FlowResponse(
+                            status="waiting_for_input",
+                            response="Order ID verified. Please describe your complaint or issue in detail.",
+                            updated_state={
+                                "current_flow": "complaint",
+                                "current_stage": "waiting_for_complaint_description",
+                                "waiting_for_order_id": False,
+                                "entities": new_entities
+                            }
+                        )
+                    else:
+                        return FlowResponse(
+                            status="waiting_for_input",
+                            response="For security purposes, please provide the phone number associated with this order.",
+                            updated_state={
+                                "current_flow": "complaint",
+                                "current_stage": "waiting_for_phone",
+                                "waiting_for_order_id": False,
+                                "entities": new_entities
+                            }
+                        )
                 except Exception:
                     return FlowResponse(
                         status="waiting_for_input",
@@ -149,27 +161,39 @@ class ComplaintFlow(BaseFlow):
                     if resolved_id != order_id:
                         new_entities["parent_order_id"] = order_id
                     
-                    # Check delivery date for 7-day return policy
-                    delivery_date = self.order_repository.get_delivery_date(resolved_id)
-                    if delivery_date and isinstance(delivery_date, datetime):
-                        days_passed = (datetime.now() - delivery_date).days
-                        if days_passed >= 7:
-                            return FlowResponse(
-                                status="completed",
-                                response="We are sorry, but more than 7 days have passed since the delivery of your order. According to Naheed's return policy, the product cannot be returned. We apologize for any inconvenience.",
-                                updated_state={"current_flow": None, "current_stage": None}
-                            )
-                    # Direct to description collection instead of category menu
-                    return FlowResponse(
-                        status="waiting_for_input",
-                        response="Order ID verified. Please describe your complaint or issue in detail.",
-                        updated_state={
-                            "current_flow": "complaint",
-                            "current_stage": "waiting_for_complaint_description",
-                            "waiting_for_order_id": False,
-                            "entities": new_entities
-                        }
-                    )
+                    if getattr(state, "customer_verified", False):
+                        # Check delivery date for 7-day return policy
+                        delivery_date = self.order_repository.get_delivery_date(resolved_id)
+                        if delivery_date and isinstance(delivery_date, datetime):
+                            days_passed = (datetime.now() - delivery_date).days
+                            if days_passed >= 7:
+                                return FlowResponse(
+                                    status="completed",
+                                    response="We are sorry, but more than 7 days have passed since the delivery of your order. According to Naheed's return policy, the product cannot be returned. We apologize for any inconvenience.",
+                                    updated_state={"current_flow": None, "current_stage": None}
+                                )
+                        # Direct to description collection instead of category menu
+                        return FlowResponse(
+                            status="waiting_for_input",
+                            response="Order ID verified. Please describe your complaint or issue in detail.",
+                            updated_state={
+                                "current_flow": "complaint",
+                                "current_stage": "waiting_for_complaint_description",
+                                "waiting_for_order_id": False,
+                                "entities": new_entities
+                            }
+                        )
+                    else:
+                        return FlowResponse(
+                            status="waiting_for_input",
+                            response="For security purposes, please provide the phone number associated with this order.",
+                            updated_state={
+                                "current_flow": "complaint",
+                                "current_stage": "waiting_for_phone",
+                                "waiting_for_order_id": False,
+                                "entities": new_entities
+                            }
+                        )
                 except Exception:
                     return FlowResponse(
                         status="waiting_for_input",
@@ -179,6 +203,54 @@ class ComplaintFlow(BaseFlow):
                             "current_stage": "waiting_for_order_id",
                             "waiting_for_order_id": True
                         }
+                    )
+
+        # 2.5 Waiting for Phone verification stage
+        if current_stage == "waiting_for_phone":
+            order_id = state.entities.get("order_id")
+            from services.order_service import OrderService
+            order_service = OrderService(repository=self.order_repository)
+            if order_service.verify_customer(order_id, user_msg):
+                state.customer_verified = True
+                state.verification_attempts = 0
+                
+                # Check delivery date for 7-day return policy
+                resolved_id = self.order_repository.resolve_to_latest_order_id(order_id)
+                delivery_date = self.order_repository.get_delivery_date(resolved_id)
+                if delivery_date and isinstance(delivery_date, datetime):
+                    days_passed = (datetime.now() - delivery_date).days
+                    if days_passed >= 7:
+                        state.current_flow = None
+                        state.current_stage = None
+                        return FlowResponse(
+                            status="completed",
+                            response="We are sorry, but more than 7 days have passed since the delivery of your order. According to Naheed's return policy, the product cannot be returned. We apologize for any inconvenience.",
+                        )
+                
+                # Verification successful, transition to description collection
+                return FlowResponse(
+                    status="waiting_for_input",
+                    response="Verification successful. Please describe your complaint or issue in detail.",
+                    updated_state={
+                        "current_flow": "complaint",
+                        "current_stage": "waiting_for_complaint_description"
+                    }
+                )
+            else:
+                state.verification_attempts += 1
+                if state.verification_attempts >= 3:
+                    state.current_flow = None
+                    state.current_stage = None
+                    state.verification_attempts = 0
+                    return FlowResponse(
+                        status="completed",
+                        response="We were unable to verify the provided phone number. I'm connecting you with a customer support representative for further assistance.",
+                        tool_request="agent_handoff"
+                    )
+                else:
+                    return FlowResponse(
+                        status="waiting_for_input",
+                        response="The phone number provided does not match our records. Please try again."
                     )
 
         # 3. Waiting for Complaint Description (AI/LLM-based categorization)
@@ -247,7 +319,7 @@ class ComplaintFlow(BaseFlow):
                                 sub_category = "Damaged Product"
                             else:
                                 sub_category = "Wrong Product"
-                        elif "refund" in msg_lower or "paisa" in msg_lower or "cashback" in msg_lower or "warranty" in msg_lower:
+                        elif "refund" in msg_lower or "paisa" in msg_lower or "cashback" in msg_lower or "warranty" in msg_lower or "exchange" in msg_lower or "replace" in msg_lower:
                             category = "Refund"
                             if "warranty" in msg_lower:
                                 sub_category = "Warranty Claim"
@@ -255,6 +327,8 @@ class ComplaintFlow(BaseFlow):
                                 sub_category = "Cashback"
                             elif "change of mind" in msg_lower:
                                 sub_category = "Change of Mind"
+                            elif "exchange" in msg_lower or "replace" in msg_lower:
+                                sub_category = "Exchange"
                             else:
                                 sub_category = "Refund"
                         elif "delay" in msg_lower or "delivery" in msg_lower or "info" in msg_lower or "packet" in msg_lower:
@@ -335,7 +409,7 @@ class ComplaintFlow(BaseFlow):
                         "entities": {**state.entities, "complaint_category": "Wrong"}
                     }
                 )
-            elif "refund" in msg_lower:
+            elif "refund" in msg_lower or "exchange" in msg_lower or "replace" in msg_lower:
                 return FlowResponse(
                     status="waiting_for_input",
                     response="Please select the sub-category:\n- Refund\n- Warranty Claim\n- Cashback\n- Change of Mind",

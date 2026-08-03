@@ -20,6 +20,7 @@ class TestComplaintFeature(unittest.TestCase):
         self.mock_order_repo.get_unavailable_items.return_value = []
         self.flow = ComplaintFlow(order_repository=self.mock_order_repo)
         self.state = ConversationState()
+        self.state.customer_verified = True
 
     def test_flow_trigger_without_order_id(self):
         intent = IntentResult(intent="complaint", confidence=0.9)
@@ -445,6 +446,21 @@ class TestComplaintFeature(unittest.TestCase):
         self.assertEqual(response.status, "waiting_for_input")
         self.assertIn("Please describe your complaint", response.response)
         self.assertEqual(response.updated_state["current_stage"], "waiting_for_complaint_description")
+
+    def test_flow_waiting_for_description_classification_exchange(self):
+        self.state.current_stage = "waiting_for_complaint_description"
+        self.state.entities["order_id"] = "12345"
+        self.state.conversation_history.append({"role": "user", "content": "I want to exchange this item"})
+        
+        # Simulating keyword classification matching "exchange" -> Refund/Exchange subcategory
+        intent = IntentResult(intent="complaint", confidence=0.95, entities={})
+        
+        response = self.flow.handle(intent, self.state)
+        
+        self.assertEqual(response.status, "waiting_for_input")
+        self.assertIn("describe your exchange issue in more detail", response.response.lower())
+        self.assertEqual(response.updated_state["current_stage"], "waiting_for_simple_details")
+        self.assertEqual(response.updated_state["entities"]["complaint_sub_category"], "Exchange")
 
 if __name__ == '__main__':
     unittest.main()

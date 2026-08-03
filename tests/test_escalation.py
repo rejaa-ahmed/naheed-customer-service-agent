@@ -28,7 +28,7 @@ class TestEscalation(unittest.TestCase):
         )
         
         response = self.manager.process_message("I want to talk to a human", "session1")
-        self.assertIn("Connecting you to an agent", response)
+        self.assertIn("connecting you to a customer support representative", response.lower())
         
         state = self.state_manager.get_state("session1")
         self.assertTrue(state.handoff_pending)
@@ -54,7 +54,7 @@ class TestEscalation(unittest.TestCase):
         
         # 2. User accepts the escalation (multilingual)
         response2 = self.manager.process_message("haan please", "session2")
-        self.assertIn("Connecting you to an agent", response2)
+        self.assertIn("connecting you to a customer support representative", response2.lower())
         
         state = self.state_manager.get_state("session2")
         self.assertIsNone(state.pending_confirmation)
@@ -140,7 +140,7 @@ class TestEscalation(unittest.TestCase):
                 self.mock_parser.parse_intent.side_effect = Exception("Should not reach here")
                 
                 response = self.manager.process_message(word, session_id)
-                self.assertIn("Connecting you to an agent", response)
+                self.assertIn("connecting you to a customer support representative", response.lower())
                 self.assertTrue(self.state_manager.get_state(session_id).handoff_pending)
 
 if __name__ == '__main__':

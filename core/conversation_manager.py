@@ -31,7 +31,10 @@ class ConversationManager:
         self.complaint_service = complaint_service or ComplaintService()
         self.complaint_tracking_service = complaint_tracking_service or ComplaintTrackingService()
         self.state_manager = state_manager or StateManager()
-        self.flow_manager = flow_manager or FlowManager()
+        self.flow_manager = flow_manager or FlowManager(
+            order_service=self.order_service,
+            order_repository=self.order_service.repository if hasattr(self.order_service, 'repository') else None
+        )
         self.conversation_service = conversation_service or ConversationService()
         self.audit_service = AuditService()
         self.rate_limiter_service = RateLimiterService()
@@ -139,6 +142,40 @@ class ConversationManager:
         self.state_manager.add_message(session_id, "user", message)
         state = self.state_manager.get_state(session_id)
         
+        # Check for pending confirmation (Escalation Handoff Interception)
+        if getattr(state, "pending_confirmation", None) == "agent_handoff":
+            msg_clean = message.strip().lower().rstrip('.!?')
+            affirmative_words = {"yes", "haan", "ji", "okay", "sure", "y", "yes please", "haan please"}
+            import re
+            is_affirmative = msg_clean in affirmative_words or any(re.search(r'\b' + re.escape(w) + r'\b', msg_clean) for w in affirmative_words)
+            
+            if is_affirmative:
+                state.handoff_pending = True
+                state.pending_confirmation = None
+                response_text = "I'm connecting you to a customer support representative who can assist you further. Please wait a moment."
+                self.state_manager.add_message(session_id, "assistant", response_text)
+                
+                logger.info("ENTER ConversationManager persistence")
+                self.conversation_service.save_user_message(session_id, message, intent="agent_handoff")
+                self.conversation_service.save_bot_message(session_id, response_text)
+                logger.info("EXIT ConversationManager persistence")
+                
+                return response_text, {
+                    "intent": "agent_handoff",
+                    "confidence": 1.0,
+                    "entities": {},
+                    "priority": state.priority,
+                    "mood": state.mood,
+                    "used_fallback_router": False,
+                    "llm_error": None,
+                    "flow_status": "completed",
+                    "tool_request": "agent_handoff",
+                    "tool_args": {},
+                    "raw_json": {}
+                }
+            else:
+                state.pending_confirmation = None
+        
         # 1. Classify Intent via LLM
         intent_result = None
         used_fallback_router = False
@@ -224,9 +261,14 @@ class ConversationManager:
         else:
             state.consecutive_unknown_count = 0
             
-        if self._evaluate_escalation(state, intent_result):
-            logger.info("Escalation rules triggered, redirecting to agent_handoff.")
+        action = self._check_escalation_action(state, intent_result)
+        should_offer_escalation = False
+        if action == "immediate_handoff":
+            state.handoff_pending = True
             intent_result.intent = "agent_handoff"
+        elif action == "offer_escalation":
+            state.pending_confirmation = "agent_handoff"
+            should_offer_escalation = True
         
         # 2. Execute Flow via FlowManager
         try:
@@ -302,6 +344,28 @@ class ConversationManager:
             else:
                 response_text = ticket_msg
 
+        # Check if service response indicates failure
+        if 'service_response' in locals() and isinstance(service_response, dict):
+            if not service_response.get("success", True):
+                state.consecutive_failure_count += 1
+                if state.consecutive_failure_count >= 2:
+                    state.pending_confirmation = "agent_handoff"
+                    should_offer_escalation = True
+            else:
+                state.consecutive_failure_count = 0
+
+        # Append escalation offer if needed
+        if should_offer_escalation or (getattr(state, "pending_confirmation", None) == "agent_handoff"):
+            offer_text = "Would you like me to connect you with one of our customer support representatives?"
+            if getattr(intent_result, "escalation_reason", None) == "customer_frustration" or (state.mood == "sad") or "frustrat" in message.lower():
+                offer_text = "I understand this has been frustrating. Would you like me to connect you with one of our customer support representatives?"
+            
+            if response_text:
+                if offer_text not in response_text:
+                    response_text = f"{response_text}\n\n{offer_text}" if not response_text.rstrip().endswith(offer_text) else response_text
+            else:
+                response_text = offer_text
+
         # If the customer's message reads as upset/frustrated, lead with a short
         # empathetic reassurance before the substantive answer.
         reassurance = self.parser.generate_reassurance(
@@ -310,7 +374,7 @@ class ConversationManager:
             priority=state.priority,
             message_id=message_id
         )
-        if reassurance:
+        if reassurance and isinstance(reassurance, str):
             response_text = f"{reassurance}{response_text}"
 
         self.state_manager.add_message(session_id, "assistant", response_text)
@@ -374,6 +438,19 @@ class ConversationManager:
         response_text, _ = self.process_message_with_debug(message, session_id)
         return response_text
 
+    def _check_escalation_action(self, state, intent_result) -> str:
+        if not intent_result:
+            return "none"
+        if intent_result.intent == "agent_handoff":
+            return "immediate_handoff"
+        if state.consecutive_unknown_count >= 3:
+            return "offer_escalation"
+        if state.consecutive_failure_count >= 2:
+            return "offer_escalation"
+        if getattr(intent_result, "escalation_recommended", False) is True:
+            return "offer_escalation"
+        return "none"
+
     def _evaluate_escalation(self, state, intent_result) -> bool:
         """Returns True if the system should force agent handoff."""
         if not intent_result:
@@ -388,7 +465,7 @@ class ConversationManager:
         if state.consecutive_failure_count >= 3:
             return True
             
-        if getattr(intent_result, "escalation_recommended", False):
+        if getattr(intent_result, "escalation_recommended", False) is True:
             # Only escalate if the intent is not a core business flow (like complaint, order_tracking, refund, cancel_order)
             # which we should still attempt to handle.
             if intent_result.intent not in ["complaint", "refund", "order_tracking", "cancel_order", "modify_order"]:

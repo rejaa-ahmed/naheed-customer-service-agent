@@ -52,8 +52,9 @@ REFUND RULES:
 
 COMPLAINT VS COMPLAINT TRACKING RULES:
 - The word "complaint" alone must NEVER determine the intent. You MUST infer the user's objective.
-- `complaint` is ONLY for when the customer wants to create, register, or file a NEW complaint (e.g., "I received damaged products", "I want to complain", "Register a complaint", "Mujhe complaint karni hai", "Meri item missing hai", "Wrong item mila hai", "complaint lodge karni hai").
-- When a new complaint is filed, extract the 'complaint_category' (from: ["Missing", "Wrong", "Refund", "General", "Miscellaneous"]) and 'complaint_sub_category' (from: ["Missing Item", "Missing Accessories", "Wrong Product", "Damaged Product", "Expired Product", "Leak product", "Refund", "Warranty Claim", "Cashback", "Change of Mind", "Order Info", "Complaint Info", "Extra Parcel", "Delay Delivery", "General", "Miscellaneous"]) based on the customer's explanation.
+- `complaint` is ONLY for when the customer wants to create, register, or file a NEW complaint (e.g., "I received damaged products", "I want to complain", "Register a complaint", "Mujhe complaint karni hai", "Meri item missing hai", "Wrong item mila hai", "complaint lodge karni hai", "I want to exchange/replace").
+- When a new complaint is filed, extract the 'complaint_category' (from: ["Missing", "Wrong", "Refund", "General", "Miscellaneous"]) and 'complaint_sub_category' (from: ["Missing Item", "Missing Accessories", "Wrong Product", "Damaged Product", "Expired Product", "Leak product", "Refund", "Warranty Claim", "Cashback", "Change of Mind", "Exchange", "Order Info", "Complaint Info", "Extra Parcel", "Delay Delivery", "General", "Miscellaneous"]) based on the customer's explanation.
+- EXCHANGE RULE: If a customer states they have already received their order (e.g., "I received...", "mujhe mil gaya") and want to exchange or replace a product, this is a COMPLAINT (category: 'Refund', sub-category: 'Exchange'), NOT a modify_order.
 - MISCELLANEOUS RULE: If the customer describes MORE THAN ONE distinct complaint/issue in the same message (e.g. an item is both missing AND a different item is damaged, or they mention two unrelated problems at once), set complaint_category to "Miscellaneous" and complaint_sub_category to "Miscellaneous" instead of picking just one of the other categories.
 - `complaint_tracking` is ONLY for when the customer ALREADY has a complaint and wants to know its progress, status, update, whether it has been resolved, or what happened afterwards. They are NOT creating a new complaint.
 - STRICT NEGATIVE CONSTRAINTS for `complaint_tracking`: The following phrases MUST ALWAYS classify as `complaint_tracking` (even if the words track or status are not present): "meri complaint ka kya hua", "complaint ki thi", "main ne complaint ki thi", "us complaint ka kya bana", "uska kya hua", "koi update", "complaint resolve hui?", "complaint ka status", "complaint check karo", "complaint follow up", "complaint tracking", "complaint track karo", "meri complaint kidhar pohanchi", "complaint pe kya action hua", "abhi tak koi jawab nahi aya", "meri complaint dekho", "meri complaint ka update do", "us complaint ka result batao".
@@ -177,6 +178,9 @@ User: "I received a wrong item and also want a refund for another product"
 
 User: "complaint lodge karni hai"
 {"intent": "complaint", "confidence": 0.98, "entities": {}, "tool": "create_complaint", "priority": "high", "mood": "happy"}
+
+User: "I received lipfinity maxfactor lip colour which I don't want.. Can I exchange this colour and also tell me can I exchange from your store or online exchange"
+{"intent": "complaint", "confidence": 0.98, "entities": {"complaint_category": "Refund", "complaint_sub_category": "Exchange"}, "tool": "create_complaint", "priority": "high", "mood": "happy"}
 
 # Complaint Tracking - calm status check-ins are NOT sad by default
 User: "complaint ki thi uska kya hua"

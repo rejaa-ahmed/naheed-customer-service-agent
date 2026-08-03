@@ -24,6 +24,8 @@ class ConversationState(BaseModel):
     # Verification state
     customer_verified: bool = False
     verification_attempts: int = 0
+    handoff_pending: bool = False
+    pending_confirmation: Optional[str] = None
 
 class StateManager:
     def __init__(self, timeout_seconds: int = 300):
@@ -69,6 +71,16 @@ class StateManager:
         # Only update non-null entities
         for k, v in new_entities.items():
             if v is not None:
+                # Protect order_id from being overwritten by phone numbers
+                if k == "order_id":
+                    # If currently in a verification stage, do not overwrite order_id
+                    if state.current_stage in ["waiting_for_phone", "ask_verification"]:
+                        continue
+                    # Also ignore if value looks like a Pakistani phone number (10-12 digits starting with 03 or 92)
+                    v_str = str(v).strip()
+                    existing_order = state.entities.get("order_id")
+                    if existing_order and len(v_str) in [10, 11, 12] and (v_str.startswith("03") or v_str.startswith("92") or v_str.startswith("+92")):
+                        continue
                 state.entities[k] = v
         state.timestamp = time.time()
         

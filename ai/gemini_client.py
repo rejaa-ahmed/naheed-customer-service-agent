@@ -18,7 +18,7 @@ class GeminiClient(BaseLLMClient):
         # Validate the key exists before startup
         self.api_key = os.getenv("GEMINI_API_KEY")
         if not self.api_key:
-            logger.warning("GEMINI_API_KEY is missing from environment variables.")
+            logger.critical("GEMINI_API_KEY is missing from environment variables.")
             raise ValueError("GEMINI_API_KEY is missing from environment variables.")
         
         # Initialize official client

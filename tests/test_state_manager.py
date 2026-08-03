@@ -88,6 +88,9 @@ class TestStatefulConversationManager(unittest.TestCase):
         intent_2.entities.model_dump.return_value = {"order_id": "12345"}
         self.mock_parser.parse_intent.return_value = intent_2
         
+        state = self.cm.state_manager.get_state(self.session_id)
+        state.customer_verified = True
+        
         res2 = self.cm.process_message("12345", self.session_id)
         self.assertEqual(res2, "Order is processing.")
         

@@ -21,12 +21,12 @@ class FlowManager:
     """
     Acts as the orchestration layer mapping intents to their respective conversational flows.
     """
-    def __init__(self):
+    def __init__(self, order_service=None, order_repository=None):
         # Register flows
         self._flows: Dict[str, BaseFlow] = {
-            "order_tracking": OrderTrackingFlow(),
+            "order_tracking": OrderTrackingFlow(order_service=order_service),
             "modify_order": ModifyOrderFlow(),
-            "complaint": ComplaintFlow(),
+            "complaint": ComplaintFlow(order_repository=order_repository),
             "complaint_tracking": ComplaintTrackingFlow(),
             "refund": RefundFlow(),
             "general_policy": GeneralPolicyFlow(),

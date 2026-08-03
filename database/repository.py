@@ -204,7 +204,7 @@ class OrderRepository:
             entity_id=result["entity_id"],
             increment_id=result["increment_id"],
             status=result["status"],
-            state=result["state"],
+            state=result.get("state"),
             estimated_delivery_datetime=result["delivery_due_date"],
             shipping_city=result["city"],
             recipient_name=f"{result['firstname'] or ''} {result['lastname'] or ''}".strip() if result['firstname'] or result['lastname'] else None,
@@ -356,6 +356,41 @@ class OrderRepository:
         except Exception as e:
             logger.error(f"Database error while fetching order status {increment_id}: {e}")
             raise RuntimeError(f"Database error: {e}") from e
+
+    def get_status_label(self, status: str) -> str:
+        """Fetch user-friendly label for the given status from sales_order_status table.
+        Returns the original status string capitalized if not found or on database error."""
+        if not status:
+            return ""
+        query = "SELECT label FROM sales_order_status WHERE status = %s"
+        try:
+            with DatabaseManager() as conn:
+                logger.info(f"Fetching status label for status: {status}")
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute(query, (status,))
+                result = cursor.fetchone()
+                cursor.close()
+                
+                if result and result.get("label"):
+                    label = result["label"]
+                    logger.info(f"Retrieved label '{label}' for status: {status}")
+                    return label
+                return status.capitalize()
+        except Exception as e:
+            logger.error(f"Error fetching status label for status {status}: {e}")
+            import os
+            mock_fallback = os.getenv("DB_MOCK_FALLBACK", "false").lower() == "true"
+            if mock_fallback:
+                mapping = {
+                    "pending": "Pending",
+                    "processing": "Processing",
+                    "shipped": "Shipped / Dispatched",
+                    "packed": "Packed",
+                    "complete": "Complete",
+                    "canceled": "Canceled"
+                }
+                return mapping.get(status.lower(), status.capitalize())
+            return status.capitalize()
 
     def get_delivery_date(self, increment_id: str) -> Optional[datetime.datetime]:
         """Fetch the actual completion/delivery datetime (completed_at) for the given order increment ID.

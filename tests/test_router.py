@@ -73,6 +73,7 @@ class TestConversationManager(unittest.TestCase):
             "success": True, 
             "message": "Your order is prepared."
         }
+        self.manager.state_manager.get_state("default").customer_verified = True
         
         response = self.manager.process_message("track order 12345")
         

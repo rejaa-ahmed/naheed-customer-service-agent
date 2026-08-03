@@ -14,6 +14,7 @@ class TestOrderService(unittest.TestCase):
     def setUp(self):
         # Inject mock repository to isolate business logic tests
         self.mock_repo = MagicMock()
+        self.mock_repo.get_status_label.side_effect = lambda x: x
         self.service = OrderService(repository=self.mock_repo)
 
     def test_track_order_success(self):
@@ -44,7 +45,7 @@ class TestOrderService(unittest.TestCase):
         response = self.service.track_order("99999")
         
         self.assertFalse(response["success"])
-        self.assertIn("couldn't find", response["message"])
+        self.assertIn("not found", response["message"].lower())
         self.assertIsNone(response["status"])
         self.assertIsNone(response["order"])
 
@@ -77,7 +78,7 @@ class TestOrderService(unittest.TestCase):
         response = self.service.track_order("12345")
         
         self.assertFalse(response["success"])
-        self.assertIn("technical difficulties", response["message"])
+        self.assertIn("technical difficulties", response["message"].lower())
         self.assertIsNone(response["status"])
 
     def test_track_parent_order_with_child_and_unavailable_items_cod(self):
