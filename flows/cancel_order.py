@@ -59,8 +59,8 @@ class CancelOrderFlow(BaseFlow):
                     response=status_check.get("message", "We couldn't find an order with that ID.")
                 )
 
-            order_status = status_check.get("status", "").lower()
-            order_state = status_check.get("state", "").lower()
+            order_status = (status_check.get("status") or "").lower()
+            order_state = (status_check.get("state") or "").lower()
             
             if order_state == "canceled" or order_status == "canceled":
                 state.current_flow = None
@@ -159,7 +159,9 @@ class CancelOrderFlow(BaseFlow):
                 )
             elif reason in ["duplicate_order", "ordered_by_mistake", "no_longer_needed"]:
                 # Proceed to cancel
-                cancel_result = self.order_service.execute_cancellation(order_id, reason)
+                user_msg = state.conversation_history[-1]["content"] if getattr(state, "conversation_history", None) else "No message provided"
+                formatted_reason = f"{user_msg} ({reason})"
+                cancel_result = self.order_service.execute_cancellation(order_id, formatted_reason)
                 state.current_flow = None
                 state.current_stage = None
                 state.customer_verified = False

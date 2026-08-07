@@ -84,40 +84,4 @@ class IntentParser:
             logger.error(f"Unexpected error during intent parsing: {e}")
             raise IntentParserError("Unexpected Error") from e
 
-    def generate_reassurance(self, user_message: str, mood: str, priority: str, message_id: str = "unknown") -> str:
-        """
-        Generates a dynamic, context-specific empathetic reassurance opener 
-        based on the user's message, mood, and priority.
-        """
-        if mood.lower() != "sad":
-            return ""
-            
-        prompt = (
-            "You are a helpful customer service assistant for Naheed. "
-            f"The customer is feeling {mood} (urgency/priority is {priority}) and wrote:\n"
-            f"\"{user_message}\"\n\n"
-            "Generate a short, single-sentence empathetic reassurance opener (10-20 words max) to acknowledge their frustration "
-            "and show you are on it. Keep it natural, organic, professional, and empathetic. "
-            "Do not include placeholders, quotes, greeting, or any introductory text. Just output the reassurance sentence itself."
-        )
-        try:
-            logger.info(f"Generating reassurance -> LLMFactory (message_id={message_id})")
-            reassurance = self.factory.generate_content_with_failover(prompt, message_id=message_id)
-            reassurance = reassurance.strip().replace('"', '').replace("'", "")
-            if reassurance and not reassurance.endswith("\n"):
-                reassurance += "\n\n"
-            return reassurance
-        except Exception as e:
-            logger.error(f"Error generating dynamic reassurance: {e}")
-            # Fallback to standard/traditional reassurance
-            if priority == "high":
-                return (
-                    "I'm really sorry you're going through this - I completely understand "
-                    "the frustration, and I'm going to make sure this gets sorted out for you "
-                    "right away.\n\n"
-                )
-            else:
-                return (
-                    "I'm sorry for the trouble this has caused you. I hear you, and I'm here to "
-                    "help get this resolved.\n\n"
-                )
+

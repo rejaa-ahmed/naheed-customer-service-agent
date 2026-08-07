@@ -368,12 +368,9 @@ class ConversationManager:
 
         # If the customer's message reads as upset/frustrated, lead with a short
         # empathetic reassurance before the substantive answer.
-        reassurance = self.parser.generate_reassurance(
-            user_message=message,
-            mood=state.mood,
-            priority=state.priority,
-            message_id=message_id
-        )
+        reassurance = getattr(intent_result, "reassurance_message", None) if intent_result else None
+        if reassurance and not reassurance.endswith("\n"):
+            reassurance += "\n\n"
         if reassurance and isinstance(reassurance, str):
             response_text = f"{reassurance}{response_text}"
 

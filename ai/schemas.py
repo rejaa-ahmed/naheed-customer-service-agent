@@ -17,6 +17,7 @@ class IntentResult(BaseModel):
     priority: str = Field("low", description="AI-judged urgency of the customer's message: 'high' or 'low'")
     mood: str = Field("happy", description="AI-judged customer mood based on their wording: 'happy' or 'sad'")
     escalation_recommended: bool = Field(False, description="Whether the LLM explicitly recommends connecting the user to a human CSR")
+    reassurance_message: Optional[str] = Field(None, description="A dynamic, single-sentence empathetic reassurance opener if the customer is feeling 'sad'. Null otherwise.")
 
     @field_validator("priority", mode="before")
     @classmethod

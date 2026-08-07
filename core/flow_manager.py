@@ -16,6 +16,7 @@ from flows.unknown import UnknownFlow
 from flows.modify_order import ModifyOrderFlow
 from flows.cancel_order import CancelOrderFlow
 from flows.agent_handoff import AgentHandoffFlow
+from flows.special_request import SpecialRequestFlow
 
 class FlowManager:
     """
@@ -35,7 +36,8 @@ class FlowManager:
             "goodbye": GoodbyeFlow(),
             "unknown": UnknownFlow(),
             "cancel_order": CancelOrderFlow(),
-            "agent_handoff": AgentHandoffFlow()
+            "agent_handoff": AgentHandoffFlow(),
+            "special_request": SpecialRequestFlow()
         }
         
     def execute_flow(self, intent_result: IntentResult, state: ConversationState) -> FlowResponse:

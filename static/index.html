@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Naheed Customer Support</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <button id="new-chat-btn" class="primary-btn">
+                <i data-lucide="plus-circle" class="btn-icon"></i>
+                <span>New Chat</span>
+            </button>
+            <button id="clear-chat-btn" class="secondary-btn">
+                <i data-lucide="trash-2" class="btn-icon"></i>
+                <span>Clear Chat</span>
+            </button>
+            
+            <div class="status-box">
+                <h4>System Status</h4>
+                <div class="status-item"><span class="indicator online"></span> <span>API Connected</span></div>
+                <div class="status-item version"><i data-lucide="info" class="status-icon"></i> <span>Version 1.0.0</span></div>
+            </div>
+
+            <div class="dev-mode-toggle">
+                <label class="toggle-label">
+                    <input type="checkbox" id="dev-mode-checkbox">
+                    <span class="toggle-text">Developer Mode</span>
+                </label>
+            </div>
+
+            <div id="dev-info-panel" class="dev-info hidden">
+                <h4>Developer Info</h4>
+                <div class="dev-row"><span>Session:</span> <span id="dev-session-id"></span></div>
+                <div class="dev-row"><span>Flow:</span> <span id="dev-flow">None</span></div>
+                <div class="dev-row"><span>Stage:</span> <span id="dev-stage">None</span></div>
+                <div class="dev-row"><span>Intent:</span> <span id="dev-intent">None</span></div>
+                <div class="dev-row"><span>Confidence:</span> <span id="dev-confidence">0.0</span></div>
+            </div>
+        </aside>
+
+        <!-- Main Chat Area -->
+        <main class="chat-main">
+            <!-- Header -->
+            <header class="chat-header">
+                <div class="header-brand">
+                    <div class="logo-container">
+                        <img src="naheed-logo.png" alt="Naheed Logo" class="logo" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMzAiPjx0ZXh0IHk9IjIwIiBmb250LWZhbWlseT0ic2Fucy1zZXJpZiIgZm9udC1zaXplPSIyNCIgZmlsbD0iI2UzMDAwZiI+TmFoZWVkPC90ZXh0Pjwvc3ZnPg=='">
+                    </div>
+                    <div class="header-titles">
+                        <h1>Naheed Assistant</h1>
+                        <span class="subtitle"><span class="indicator online"></span> AI Support Online</span>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Chat Window -->
+            <div id="chat-window" class="chat-window">
+                <!-- Welcome Screen -->
+                <div id="welcome-screen" class="welcome-screen">
+                    <div class="welcome-icon">
+                        <i data-lucide="sparkles"></i>
+                    </div>
+                    <h2>How can I help you today?</h2>
+                    <p class="welcome-subtext">I'm your AI assistant for Naheed Customer Support.</p>
+                    <div class="suggestions">
+                        <div class="suggestion-card" onclick="document.getElementById('message-input').value='Track my order'; document.getElementById('message-input').focus();">
+                            <i data-lucide="package"></i>
+                            <span>Track an order</span>
+                        </div>
+                        <div class="suggestion-card" onclick="document.getElementById('message-input').value='Cancel my order'; document.getElementById('message-input').focus();">
+                            <i data-lucide="x-circle"></i>
+                            <span>Cancel an order</span>
+                        </div>
+                        <div class="suggestion-card" onclick="document.getElementById('message-input').value='I have a complaint'; document.getElementById('message-input').focus();">
+                            <i data-lucide="message-square"></i>
+                            <span>Register a complaint</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- Messages will be appended here -->
+            </div>
+
+            <!-- Typing Indicator (Hidden by default) -->
+            <div id="typing-indicator" class="typing-indicator hidden">
+                <div class="bot-avatar"><i data-lucide="bot"></i></div>
+                <div class="typing-bubble">
+                    <div class="dot"></div>
+                    <div class="dot"></div>
+                    <div class="dot"></div>
+                </div>
+            </div>
+
+            <!-- Input Area -->
+            <div class="input-area">
+                <div id="error-toast" class="error-toast hidden"></div>
+                <div class="input-wrapper">
+                    <form id="chat-form">
+                        <textarea id="message-input" placeholder="Message Naheed Support..." rows="1" autofocus></textarea>
+                        <button type="submit" id="send-btn" aria-label="Send Message">
+                            <i data-lucide="arrow-up" class="send-icon"></i>
+                        </button>
+                    </form>
+                    <div class="input-footer">
+                        AI can make mistakes. Please verify important information.
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    <script src="app.js"></script>
+    <script>
+        // Initialize lucide icons
+        lucide.createIcons();
+    </script>
+</body>
+</html>

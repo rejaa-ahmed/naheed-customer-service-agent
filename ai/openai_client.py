@@ -87,7 +87,10 @@ class OpenAIClient(BaseLLMClient):
             
             response = self.client.chat.completions.create(
                 model=model_name,
-                messages=[{"role": "user", "content": prompt}]
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_object"},
+                max_tokens=200,
+                temperature=0.1
             )
             
             if not response or not response.choices or not response.choices[0].message.content:

@@ -21,10 +21,19 @@ class IntentRouter:
         self.patterns = {
             "order_tracking": [r"track.*order", r"where.*order", r"status.*order", r"order.*status"],
             "modify_order": [
-                r"modify.*order", r"change.*order", r"edit.*order", r"order.*change", r"order.*modify",
+                r"modify.*order", r"change.*order", r"\bedit\b.*order", r"order.*change", r"order.*modify",
                 r"add.*product", r"add.*item", r"remove.*product", r"remove.*item", r"add.*to.*order", r"remove.*from.*order"
             ],
-            "complaint": [r"complain", r"broken", r"damaged", r"wrong item", r"issue"],
+            "special_request": [
+                r"jaldi.*(deliver|bhej)", r"^(?!.*(what|how|do you|can i)).*express.*(delivery|kar)", 
+                r"^(?!.*(what|how|do you|can i)).*urgent.*delivery", r"priority.*(delivery|dein|order)", 
+                r"same.*day.*(delivery|bhej)", r"special.*request", r"rush.*order", r"\bexpedite\b.*order", 
+                r"speed.*up.*delivery", r"deliver.*today", r"deliver.*before"
+            ],
+            "complaint": [
+                r"complain", r"broken", r"damaged", r"wrong item", r"issue",
+                r"late", r"delay", r"abhi.*tak.*nahi.*aya", r"receive.*nahi"
+            ],
             "greeting": [r"^hi\b", r"^hello\b", r"^hey\b", r"^good morning", r"^good afternoon"],
         }
         # Look for numbers that might be order IDs (assumed 5-10 digits)

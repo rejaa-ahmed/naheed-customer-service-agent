@@ -17,6 +17,7 @@ class AuditEvent(str, Enum):
     RATE_LIMIT = "RATE_LIMIT"
     LLM_INTERACTION = "LLM_INTERACTION"
     SYSTEM_EXCEPTION = "SYSTEM_EXCEPTION"
+    SPECIAL_REQUEST = "SPECIAL_REQUEST"
 
 class AuditOutcome(str, Enum):
     SUCCESS = "SUCCESS"

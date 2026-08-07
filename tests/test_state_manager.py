@@ -53,7 +53,7 @@ class TestStateManager(unittest.TestCase):
 class TestStatefulConversationManager(unittest.TestCase):
     def setUp(self):
         self.mock_parser = MagicMock()
-        self.mock_parser.generate_reassurance.return_value = ""
+
         self.mock_router = MagicMock()
         self.mock_order_service = MagicMock()
         self.mock_order_service.track_order.return_value = {"message": "Order is processing."}

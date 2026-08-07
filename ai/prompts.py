@@ -20,6 +20,7 @@ The intents have a strict priority order. If multiple could apply, pick the high
 11. cancel_order
 12. agent_handoff
 13. unknown
+14. special_request
 
 LANGUAGE INSTRUCTIONS:
 - You must understand English, Urdu, Roman Urdu, and mixed languages natively.
@@ -47,13 +48,26 @@ AGENT HANDOFF & ESCALATION RULES:
 - Set `escalation_recommended = true` in the output JSON if the customer is highly frustrated, angry, or highly dissatisfied, OR if they are requesting compensation or a price match.
 - IMPORTANT DISTINCTION: Informational questions like "What are your shipping fees?" or "Do you have discounts?" MUST map to `general_policy` or `general_query`. Only classify as `agent_handoff` or `escalation_recommended = true` when it is a NEGOTIATION (demanding a lower price, complaining about high fees, refusing to pay).
 
+SPECIAL REQUEST RULES:
+- The customer is asking Naheed to perform a NEW operational action outside the normal workflow. They are requesting that something be expedited, prioritized, or changed.
+- Map to `special_request` if the customer asks the chatbot to perform an operational exception that it cannot perform autonomously.
+- Examples include requests to expedite delivery, speed up delivery, prioritize an order, rush an order, urgent dispatch, same day delivery, or deliver before a specific time.
+- Phrases to map: "mera order jaldi deliver karwa do", "express kar dein", "expedite my order", "priority delivery chahiye", "speed up delivery", "aaj hi deliver kar dein".
+- The intent detection must robustly recognize semantically similar requests in English, Urdu, Roman Urdu, mixed languages, and with minor spelling mistakes.
+- NEGATIVE CONSTRAINTS: Informational questions about options and policies MUST NOT become special_request. E.g. "What is express delivery?" must map to `general_policy`.
+- CRITICAL DECISION RULE (COMPLAINT VS SPECIAL REQUEST): If the customer is merely reporting that an order is delayed, late, or hasn't arrived, this is a COMPLAINT (see Complaint rules). A `special_request` requires an EXPLICIT request for a NEW action (like "jaldi deliver karwa do").
+- MIXED SENTENCE RULE: If a customer reports a delay AND requests an operational action (e.g., "order bohat late ho gaya hai, please jaldi deliver karwa dein"), classify it as `special_request`.
+
 REFUND RULES:
 - "Refund chahiye", "Return karna hai" MUST map to their specific intents ('refund' or 'return' if added later, map "Return karna hai" to 'refund'). NEVER 'general_policy'.
 
 COMPLAINT VS COMPLAINT TRACKING RULES:
 - The word "complaint" alone must NEVER determine the intent. You MUST infer the user's objective.
-- `complaint` is ONLY for when the customer wants to create, register, or file a NEW complaint (e.g., "I received damaged products", "I want to complain", "Register a complaint", "Mujhe complaint karni hai", "Meri item missing hai", "Wrong item mila hai", "complaint lodge karni hai", "I want to exchange/replace").
-- When a new complaint is filed, extract the 'complaint_category' (from: ["Missing", "Wrong", "Refund", "General", "Miscellaneous"]) and 'complaint_sub_category' (from: ["Missing Item", "Missing Accessories", "Wrong Product", "Damaged Product", "Expired Product", "Leak product", "Refund", "Warranty Claim", "Cashback", "Change of Mind", "Exchange", "Order Info", "Complaint Info", "Extra Parcel", "Delay Delivery", "General", "Miscellaneous"]) based on the customer's explanation.
+- `complaint` is ONLY for when the customer wants to create, register, or file a NEW complaint.
+- PRIMARY DECISION RULE (COMPLAINT VS SPECIAL REQUEST): A complaint is when a customer is reporting an existing problem, dissatisfaction, or service failure. They are describing something that has already happened. No new operational action is being requested.
+- Examples of complaints: "I received damaged products", "I want to complain", "Meri item missing hai", "Wrong item mila hai", "order bohat late ho gaya hai", "mera order abhi tak nahi aya", "delivery delay ho rahi hai", "parcel receive nahi hua", "order expected date se nahi aya", "I have been waiting for two days".
+- When a new complaint is filed, extract the 'complaint_category' (from: ["Missing", "Wrong", "Refund", "General", "Miscellaneous"]) and 'complaint_sub_category' (from: ["Missing Item", "Missing Accessories", "Wrong Product", "Damaged Product", "Expired Product", "Leak product", "Refund", "Warranty Claim", "Cashback", "Change of Mind", "Exchange", "Order Info", "Complaint Info", "Extra Parcel", "Delay Delivery", "General", "Miscellaneous"]).
+- For delayed orders without an explicit request to expedite, use complaint_category "General" and complaint_sub_category "Delay Delivery".
 - EXCHANGE RULE: If a customer states they have already received their order (e.g., "I received...", "mujhe mil gaya") and want to exchange or replace a product, this is a COMPLAINT (category: 'Refund', sub-category: 'Exchange'), NOT a modify_order.
 - MISCELLANEOUS RULE: If the customer describes MORE THAN ONE distinct complaint/issue in the same message (e.g. an item is both missing AND a different item is damaged, or they mention two unrelated problems at once), set complaint_category to "Miscellaneous" and complaint_sub_category to "Miscellaneous" instead of picking just one of the other categories.
 - `complaint_tracking` is ONLY for when the customer ALREADY has a complaint and wants to know its progress, status, update, whether it has been resolved, or what happened afterwards. They are NOT creating a new complaint.
@@ -70,10 +84,7 @@ GOODBYE RULES:
 - Include cultural and regional variants (e.g., "Allah Hafiz", "Khuda Hafiz", "Fi Amanillah", "Allah Nigeban", "bye", "see you", "take care").
 - CRITICAL DISTINCTION: Must ONLY classify as `goodbye` if they are truly leaving. If they say "bye" or "thanks" but follow it up with ANOTHER question or request (e.g., "Thanks, but can you also track my order?", "Bye, actually wait..."), DO NOT classify as `goodbye`. Classify based on the follow-up request instead. You must determine the user's final conversational intent, not simply the presence of farewell words.
 
-GOODBYE RULES:
-- User explicitly wants to end the conversation or says farewell.
-- Include cultural and regional variants (e.g., "Allah Hafiz", "Khuda Hafiz", "Fi Amanillah", "Allah Nigeban", "bye", "see you", "take care").
-- CRITICAL DISTINCTION: Must ONLY classify as `goodbye` if they are truly leaving. If they say "bye" or "thanks" but follow it up with ANOTHER question or request (e.g., "Thanks, but can you also track my order?", "Bye, actually wait..."), DO NOT classify as `goodbye`. Classify based on the follow-up request instead. You must determine the user's final conversational intent, not simply the presence of farewell words.
+
 
 CRITICAL NEGATIVE RULES:
 - A numeric-only message (e.g. "12345") MUST be classified as "unknown" with no entities unless contextual.
@@ -93,6 +104,8 @@ CRITICAL - DO NOT OVER-TRIGGER "sad":
 - A message CAN be angry/sad even if it does not mention an order, product, or complaint category at all - e.g. "YOU ARE ALL IDIOTS", "this app is so stupid", or "WHY IS THIS SO USELESS" must be judged mood=sad purely from the insulting/shouting tone, regardless of intent.
 Base "mood" purely on the current message's actual wording, never on its intent category alone.
 
+3. "reassurance_message": If the mood is "sad", you MUST generate a `reassurance_message`. This should be a short, single-sentence empathetic reassurance opener (10-20 words max) to acknowledge their frustration and show you are on it. Keep it natural, organic, professional, and empathetic. Do not include placeholders, quotes, greeting, or any introductory text. Just output the reassurance sentence itself. If the mood is "happy", set `reassurance_message` to null.
+
 OUTPUT FORMAT:
 - Return ONLY valid JSON.
 - Never return Markdown blocks (e.g. ```json).
@@ -111,7 +124,8 @@ OUTPUT FORMAT:
   },
   "tool": "string or null",
   "priority": "high or low",
-  "mood": "happy or sad"
+  "mood": "happy or sad",
+  "reassurance_message": "string or null"
 }
 
 FEW-SHOT EXAMPLES:
@@ -120,14 +134,7 @@ FEW-SHOT EXAMPLES:
 User: "Mera order kidhar hai"
 {"intent": "order_tracking", "confidence": 0.98, "entities": {}, "tool": "track_order", "priority": "low", "mood": "happy"}
 
-User: "Mera order kab deliver hoga"
-{"intent": "order_tracking", "confidence": 0.98, "entities": {}, "tool": "track_order", "priority": "low", "mood": "happy"}
 
-User: "Track my order"
-{"intent": "order_tracking", "confidence": 0.98, "entities": {}, "tool": "track_order", "priority": "low", "mood": "happy"}
-
-User: "Where is my parcel"
-{"intent": "order_tracking", "confidence": 0.97, "entities": {}, "tool": "track_order", "priority": "low", "mood": "happy"}
 
 User: "Order 2000098496"
 {"intent": "order_tracking", "confidence": 0.99, "entities": {"order_id": "2000098496"}, "tool": "track_order", "priority": "low", "mood": "happy"}
@@ -176,6 +183,15 @@ User: "order 1002 mein ek item missing hai aur doosra item damaged bhi hai"
 User: "I received a wrong item and also want a refund for another product"
 {"intent": "complaint", "confidence": 0.95, "entities": {"complaint_category": "Miscellaneous", "complaint_sub_category": "Miscellaneous"}, "tool": "create_complaint"}
 
+User: "order bohat late ho gaya hai"
+{"intent": "complaint", "confidence": 0.98, "entities": {"complaint_category": "General", "complaint_sub_category": "Delay Delivery"}, "tool": "create_complaint"}
+
+User: "delivery delay ho rahi hai but I just wanted to report it"
+{"intent": "complaint", "confidence": 0.97, "entities": {"complaint_category": "General", "complaint_sub_category": "Delay Delivery"}, "tool": "create_complaint"}
+
+User: "mera order abhi tak nahi aya"
+{"intent": "complaint", "confidence": 0.98, "entities": {"complaint_category": "General", "complaint_sub_category": "Delay Delivery"}, "tool": "create_complaint"}
+
 User: "complaint lodge karni hai"
 {"intent": "complaint", "confidence": 0.98, "entities": {}, "tool": "create_complaint", "priority": "high", "mood": "happy"}
 
@@ -186,14 +202,7 @@ User: "I received lipfinity maxfactor lip colour which I don't want.. Can I exch
 User: "complaint ki thi uska kya hua"
 {"intent": "complaint_tracking", "confidence": 0.98, "entities": {}, "tool": "track_complaint", "priority": "high", "mood": "happy"}
 
-User: "meri complaint ka update do"
-{"intent": "complaint_tracking", "confidence": 0.98, "entities": {}, "tool": "track_complaint", "priority": "high", "mood": "happy"}
 
-User: "us complaint ka kya bana"
-{"intent": "complaint_tracking", "confidence": 0.98, "entities": {}, "tool": "track_complaint", "priority": "high", "mood": "happy"}
-
-User: "complaint resolve hui?"
-{"intent": "complaint_tracking", "confidence": 0.98, "entities": {}, "tool": "track_complaint", "priority": "high", "mood": "happy"}
 
 # But language signaling a persisting/ignored problem IS a genuine negative signal -> sad
 User: "complaint pe kya action hua"
@@ -249,8 +258,7 @@ User: "Give me a discount or I will not buy"
 User: "Lahore ka order kab deliver hota hai"
 {"intent": "general_policy", "confidence": 0.98, "entities": {"policy_topic": "delivery", "response_mode": "standard"}, "tool": null, "priority": "low", "mood": "happy"}
 
-User: "Karachi mein order kitne din mein milta hai"
-{"intent": "general_policy", "confidence": 0.97, "entities": {"policy_topic": "delivery", "response_mode": "standard"}, "tool": null, "priority": "low", "mood": "happy"}
+
 
 User: "What are delivery charges?"
 {"intent": "general_policy", "confidence": 0.98, "entities": {"policy_topic": "delivery", "response_mode": "standard"}, "tool": null, "priority": "low", "mood": "happy"}
@@ -261,8 +269,7 @@ User: "Express delivery?"
 User: "roadside pickup"
 {"intent": "general_policy", "confidence": 0.95, "entities": {"policy_topic": "delivery", "response_mode": "standard"}, "tool": null, "priority": "low", "mood": "happy"}
 
-User: "Do you offer road-side pickup?"
-{"intent": "general_policy", "confidence": 0.96, "entities": {"policy_topic": "delivery", "response_mode": "standard"}, "tool": null, "priority": "low", "mood": "happy"}
+
 
 User: "Payment methods?"
 {"intent": "general_policy", "confidence": 0.98, "entities": {"policy_topic": "payment", "response_mode": "standard"}, "tool": null, "priority": "low", "mood": "happy"}
@@ -290,11 +297,7 @@ User: "Thanks a lot, delivery was super fast this time!"
 {"intent": "greeting", "confidence": 0.9, "entities": {}, "tool": null, "priority": "low", "mood": "happy"}
 
 # Goodbyes (True Positives)
-User: "bye bye"
-{"intent": "goodbye", "confidence": 0.99, "entities": {}, "tool": null, "priority": "low", "mood": "happy"}
 
-User: "see you later"
-{"intent": "goodbye", "confidence": 0.99, "entities": {}, "tool": null, "priority": "low", "mood": "happy"}
 
 User: "thanks that's all I needed"
 {"intent": "goodbye", "confidence": 0.98, "entities": {}, "tool": null, "priority": "low", "mood": "happy"}
@@ -305,23 +308,12 @@ User: "no thanks"
 User: "Allah Hafiz ji"
 {"intent": "goodbye", "confidence": 0.99, "entities": {}, "tool": null, "priority": "low", "mood": "happy"}
 
-User: "Khuda Hafiz"
-{"intent": "goodbye", "confidence": 0.99, "entities": {}, "tool": null, "priority": "low", "mood": "happy"}
 
-User: "Fi Amanillah"
-{"intent": "goodbye", "confidence": 0.99, "entities": {}, "tool": null, "priority": "low", "mood": "happy"}
-
-User: "Allah Nigeban"
-{"intent": "goodbye", "confidence": 0.99, "entities": {}, "tool": null, "priority": "low", "mood": "happy"}
 
 User: "take care"
 {"intent": "goodbye", "confidence": 0.99, "entities": {}, "tool": null, "priority": "low", "mood": "happy"}
 
-User: "have a nice day"
-{"intent": "goodbye", "confidence": 0.99, "entities": {}, "tool": null, "priority": "low", "mood": "happy"}
 
-User: "thanks bye"
-{"intent": "goodbye", "confidence": 0.99, "entities": {}, "tool": null, "priority": "low", "mood": "happy"}
 
 # Goodbyes False Positives (Continuing conversation)
 User: "Thanks, one more question."
@@ -340,6 +332,22 @@ User: "Bye, actually wait..."
 # Ambiguous / Unknown
 User: "Who is the president?"
 {"intent": "unknown", "confidence": 0.99, "entities": {}, "tool": null, "priority": "low", "mood": "happy"}
+
+# Special Requests
+User: "mera order jaldi deliver karwa do"
+{"intent": "special_request", "confidence": 0.98, "entities": {}, "tool": "agent_handoff", "priority": "high", "mood": "happy"}
+
+User: "speed up my delivery please"
+{"intent": "special_request", "confidence": 0.98, "entities": {}, "tool": "agent_handoff", "priority": "high", "mood": "happy"}
+
+User: "urgent delivery chahiye"
+{"intent": "special_request", "confidence": 0.98, "entities": {}, "tool": "agent_handoff", "priority": "high", "mood": "happy"}
+
+User: "order bohat late ho gaya hai, please jaldi deliver karwa dein"
+{"intent": "special_request", "confidence": 0.97, "entities": {}, "tool": "agent_handoff", "priority": "high", "mood": "sad"}
+
+User: "Do you offer express delivery?"
+{"intent": "general_policy", "confidence": 0.97, "entities": {"policy_topic": "delivery", "response_mode": "standard"}, "tool": null, "priority": "low", "mood": "happy"}
 """
 
 RESPONSE_GENERATION_PROMPT = """
