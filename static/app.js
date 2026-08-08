@@ -94,6 +94,10 @@ function formatText(str) {
     // Basic markdown for messages
     text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
     text = text.replace(/\n/g, '<br>');
+    
+    // Convert [Image Uploaded: data:...] to an actual image tag
+    text = text.replace(/\[Image Uploaded:\s*(data:image\/[^;]+;base64,[^\]]+)\]/g, '<img class="chat-image-preview" src="$1" alt="Uploaded Image">');
+    
     return text;
 }
 
@@ -186,6 +190,12 @@ form.addEventListener('submit', async (e) => {
             appendMessage('bot', data.response);
             updateDevPanel(data.debug);
             
+            // Check if backend expects an image
+            const responseLower = data.response.toLowerCase();
+            if (responseLower.includes('upload an image') || responseLower.includes('upload a photo') || responseLower.includes('upload a picture')) {
+                renderUploadButton();
+            }
+            
             // End chat on goodbye
             if (data.debug && data.debug.intent === 'goodbye') {
                 input.disabled = true;
@@ -201,6 +211,91 @@ form.addEventListener('submit', async (e) => {
         console.error(error);
     }
 });
+
+// Dynamic Upload Button Logic
+function renderUploadButton() {
+    const uploadContainer = document.createElement('div');
+    uploadContainer.className = 'dynamic-upload-container message bot';
+    
+    uploadContainer.innerHTML = `
+        <input type="file" id="dynamic-file-input" accept="image/*" style="display: none;">
+        <button type="button" class="upload-action-btn" id="trigger-upload-btn">
+            <i data-lucide="camera" style="width: 16px; height: 16px;"></i>
+            Upload Photo
+        </button>
+    `;
+    
+    chatWindow.appendChild(uploadContainer);
+    scrollToBottom();
+    
+    if (window.lucide) {
+        lucide.createIcons();
+    }
+    
+    const fileInput = uploadContainer.querySelector('#dynamic-file-input');
+    const triggerBtn = uploadContainer.querySelector('#trigger-upload-btn');
+    
+    triggerBtn.addEventListener('click', () => {
+        fileInput.click();
+    });
+    
+    fileInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        // Remove the upload button UI
+        uploadContainer.remove();
+        setProcessing(true);
+        
+        // 1. Upload file to server to get short URL
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        try {
+            const uploadRes = await fetch('/api/upload', {
+                method: 'POST',
+                body: formData
+            });
+            
+            if (!uploadRes.ok) throw new Error('Upload failed');
+            const uploadData = await uploadRes.json();
+            const imageUrl = uploadData.url;
+            
+            // 2. Fire off the background message with the exact string format expected by backend
+            const payload = `[Image Uploaded: ${imageUrl}]`;
+            
+            // Display it locally (we use Base64 just for instant local preview)
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                appendMessage('user', `[Image Uploaded: ${event.target.result}]`);
+                
+                // Send to backend
+                fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ session_id: sessionId, message: payload })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    setProcessing(false);
+                    appendMessage('bot', data.response);
+                    updateDevPanel(data.debug);
+                })
+                .catch(error => {
+                    setProcessing(false);
+                    showError('Message sending failed.');
+                    console.error(error);
+                });
+            };
+            reader.readAsDataURL(file);
+            
+        } catch (error) {
+            setProcessing(false);
+            showError('Image upload failed.');
+            console.error(error);
+        }
+    });
+}
 
 // Clear Chat Action
 async function clearChat() {
@@ -220,6 +315,11 @@ async function clearChat() {
     welcomeScreen.classList.remove('hidden');
     devFlow.textContent = 'None';
     devIntent.textContent = 'None';
+    
+    // Generate a fresh session ID so the backend starts completely fresh
+    sessionId = generateUUID();
+    localStorage.setItem('naheed_session_id', sessionId);
+    devSessionId.textContent = sessionId.split('-')[0] + '...';
     
     // Restore input state
     input.disabled = false;

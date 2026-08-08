@@ -531,3 +531,10 @@ body {
     .timeline::before { display: none; }
     .timeline { justify-content: center; }
 }
+
+/* Dynamic Upload UI */
+.dynamic-upload-container { margin-top: 0.5rem; display: flex; flex-direction: column; gap: 0.5rem; align-items: flex-start; margin-left: 56px; }
+.upload-action-btn { display: flex; align-items: center; gap: 0.5rem; background: white; border: 1px solid var(--primary); color: var(--primary); padding: 0.5rem 1rem; border-radius: var(--radius-full); cursor: pointer; font-size: 0.9rem; font-weight: 500; transition: all 0.2s; box-shadow: var(--shadow-sm); }
+.upload-action-btn:hover { background: var(--primary); color: white; }
+.chat-image-preview { max-width: 250px; border-radius: var(--radius-md); margin-top: 0.5rem; box-shadow: var(--shadow-sm); border: 1px solid var(--border); }
+

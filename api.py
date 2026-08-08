@@ -1,5 +1,6 @@
 import os
-from fastapi import FastAPI, HTTPException
+import uuid
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import uvicorn
@@ -44,6 +45,21 @@ async def clear_endpoint(req: ClearRequest):
 @app.get("/api/health")
 async def health_check():
     return {"status": "healthy"}
+
+@app.post("/api/upload")
+async def upload_endpoint(file: UploadFile = File(...)):
+    try:
+        os.makedirs("static/uploads", exist_ok=True)
+        file_ext = file.filename.split(".")[-1] if "." in file.filename else "jpg"
+        unique_filename = f"{uuid.uuid4().hex}.{file_ext}"
+        file_path = os.path.join("static", "uploads", unique_filename)
+        
+        with open(file_path, "wb") as f:
+            f.write(await file.read())
+            
+        return {"url": f"/static/uploads/{unique_filename}"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Failed to upload file")
 
 @app.get("/api/version")
 async def get_version():

@@ -52,6 +52,10 @@ class ComplaintFlow(BaseFlow):
 
         # 1. Trigger / Verify Order ID
         if current_stage is None:
+            # Cache the initial complaint message so we don't ask for it again later
+            if "initial_complaint_description" not in state.entities:
+                state.entities["initial_complaint_description"] = user_msg
+                
             order_id = state.entities.get("order_id")
             if order_id is not None and not isinstance(order_id, str):
                 order_id = str(order_id)
@@ -99,16 +103,27 @@ class ComplaintFlow(BaseFlow):
                                     updated_state={"current_flow": None, "current_stage": None}
                                 )
                         # Direct to description collection instead of category menu
-                        return FlowResponse(
-                            status="waiting_for_input",
-                            response="Order ID verified. Please describe your complaint or issue in detail.",
-                            updated_state={
-                                "current_flow": "complaint",
-                                "current_stage": "waiting_for_complaint_description",
-                                "waiting_for_order_id": False,
-                                "entities": new_entities
-                            }
-                        )
+                        category = new_entities.get("complaint_category")
+                        sub_category = new_entities.get("complaint_sub_category")
+                        if category and sub_category:
+                            state.entities = new_entities
+                            return self._transition_to_subcategory(
+                                state,
+                                category,
+                                sub_category,
+                                new_entities.get("initial_complaint_description", "User provided description earlier.")
+                            )
+                        else:
+                            return FlowResponse(
+                                status="waiting_for_input",
+                                response="Order ID verified. Please describe your complaint or issue in detail.",
+                                updated_state={
+                                    "current_flow": "complaint",
+                                    "current_stage": "waiting_for_complaint_description",
+                                    "waiting_for_order_id": False,
+                                    "entities": new_entities
+                                }
+                            )
                     else:
                         return FlowResponse(
                             status="waiting_for_input",
@@ -173,16 +188,27 @@ class ComplaintFlow(BaseFlow):
                                     updated_state={"current_flow": None, "current_stage": None}
                                 )
                         # Direct to description collection instead of category menu
-                        return FlowResponse(
-                            status="waiting_for_input",
-                            response="Order ID verified. Please describe your complaint or issue in detail.",
-                            updated_state={
-                                "current_flow": "complaint",
-                                "current_stage": "waiting_for_complaint_description",
-                                "waiting_for_order_id": False,
-                                "entities": new_entities
-                            }
-                        )
+                        category = new_entities.get("complaint_category")
+                        sub_category = new_entities.get("complaint_sub_category")
+                        if category and sub_category:
+                            state.entities = new_entities
+                            return self._transition_to_subcategory(
+                                state,
+                                category,
+                                sub_category,
+                                new_entities.get("initial_complaint_description", "User provided description earlier.")
+                            )
+                        else:
+                            return FlowResponse(
+                                status="waiting_for_input",
+                                response="Order ID verified. Please describe your complaint or issue in detail.",
+                                updated_state={
+                                    "current_flow": "complaint",
+                                    "current_stage": "waiting_for_complaint_description",
+                                    "waiting_for_order_id": False,
+                                    "entities": new_entities
+                                }
+                            )
                     else:
                         return FlowResponse(
                             status="waiting_for_input",
@@ -227,15 +253,25 @@ class ComplaintFlow(BaseFlow):
                             response="We are sorry, but more than 7 days have passed since the delivery of your order. According to Naheed's return policy, the product cannot be returned. We apologize for any inconvenience.",
                         )
                 
-                # Verification successful, transition to description collection
-                return FlowResponse(
-                    status="waiting_for_input",
-                    response="Verification successful. Please describe your complaint or issue in detail.",
-                    updated_state={
-                        "current_flow": "complaint",
-                        "current_stage": "waiting_for_complaint_description"
-                    }
-                )
+                # Verification successful, transition to description collection or skip if known
+                category = state.entities.get("complaint_category")
+                sub_category = state.entities.get("complaint_sub_category")
+                if category and sub_category:
+                    return self._transition_to_subcategory(
+                        state,
+                        category,
+                        sub_category,
+                        state.entities.get("initial_complaint_description", "User provided description earlier.")
+                    )
+                else:
+                    return FlowResponse(
+                        status="waiting_for_input",
+                        response="Verification successful. Please describe your complaint or issue in detail.",
+                        updated_state={
+                            "current_flow": "complaint",
+                            "current_stage": "waiting_for_complaint_description"
+                        }
+                    )
             else:
                 state.verification_attempts += 1
                 if state.verification_attempts >= 3:
@@ -471,7 +507,8 @@ class ComplaintFlow(BaseFlow):
                 image_path = image_match.group(1).strip() if image_match.group(1) else 'uploaded_image_placeholder'
 
                 order_id = state.entities.get("order_id")
-                details = f"Sub-category: {sub_cat}."
+                initial_desc = state.entities.get("initial_complaint_description", "")
+                details = f"Sub-category: {sub_cat}. Details: {initial_desc}".strip()
                 return FlowResponse(
                     status="completed",
                     response="",
@@ -543,7 +580,8 @@ class ComplaintFlow(BaseFlow):
             # All details collected! Complete ticket registration.
             order_id = state.entities.get("order_id")
             image_url = state.entities.get("image_url")
-            details = f"Sub-category: {sub_cat}. Resolution: {resolution}."
+            initial_desc = state.entities.get("initial_complaint_description", "")
+            details = f"Sub-category: {sub_cat}. Resolution: {resolution}. Details: {initial_desc}".strip()
 
             return FlowResponse(
                 status="completed",
@@ -736,6 +774,21 @@ class ComplaintFlow(BaseFlow):
                     )
             except Exception:
                 pass
+                
+            if user_description and user_description != "User provided description earlier.":
+                return FlowResponse(
+                    status="completed",
+                    response="",
+                    updated_state={"current_flow": None, "current_stage": None},
+                    tool_request="create_complaint",
+                    tool_args={
+                        "order_id": order_id,
+                        "complaint_type": "General",
+                        "details": f"Sub-category: General. Details: {user_description}",
+                        "image_url": None
+                    }
+                )
+                
             return FlowResponse(
                 status="waiting_for_input",
                 response="Please describe the issue you are experiencing.",
@@ -758,6 +811,20 @@ class ComplaintFlow(BaseFlow):
                     )
             except Exception:
                 pass
+
+            if user_description and user_description != "User provided description earlier.":
+                return FlowResponse(
+                    status="completed",
+                    response="",
+                    updated_state={"current_flow": None, "current_stage": None},
+                    tool_request="create_complaint",
+                    tool_args={
+                        "order_id": order_id,
+                        "complaint_type": sub_category,
+                        "details": f"Sub-category: {sub_category}. Details: {user_description}",
+                        "image_url": None
+                    }
+                )
 
             return FlowResponse(
                 status="waiting_for_input",

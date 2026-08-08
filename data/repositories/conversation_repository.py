@@ -33,14 +33,18 @@ class ConversationRepository:
         logger.info("ENTER create_session")
         try:
             insert_query = """
-            INSERT INTO conversation_sessions (session_id, customer_identifier)
+            INSERT IGNORE INTO conversation_sessions (session_id, customer_identifier)
             VALUES (%s, %s)
             """
             with DatabaseManager() as conn:
                 cursor = conn.cursor()
                 cursor.execute(insert_query, (session_id, customer_identifier))
                 conn.commit()
-                internal_id = cursor.lastrowid
+                
+                cursor.execute("SELECT id FROM conversation_sessions WHERE session_id = %s LIMIT 1", (session_id,))
+                result = cursor.fetchone()
+                internal_id = result[0] if result else None
+                
                 cursor.close()
                 logger.info(f"returned new conversation_id={internal_id}")
                 logger.info("EXIT create_session")

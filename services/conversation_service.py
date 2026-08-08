@@ -14,7 +14,7 @@ class ConversationService:
 
     def get_or_create_session(self, session_id: str, customer_identifier: Optional[str] = None) -> Optional[int]:
         session = self.repository.get_session(session_id)
-        if session and session.get('status') != 'closed':
+        if session:
             return session['id']
         return self.repository.create_session(session_id, customer_identifier)
 
