@@ -775,20 +775,6 @@ class ComplaintFlow(BaseFlow):
             except Exception:
                 pass
                 
-            if user_description and user_description != "User provided description earlier.":
-                return FlowResponse(
-                    status="completed",
-                    response="",
-                    updated_state={"current_flow": None, "current_stage": None},
-                    tool_request="create_complaint",
-                    tool_args={
-                        "order_id": order_id,
-                        "complaint_type": "General",
-                        "details": f"Sub-category: General. Details: {user_description}",
-                        "image_url": None
-                    }
-                )
-                
             return FlowResponse(
                 status="waiting_for_input",
                 response="Please describe the issue you are experiencing.",
@@ -811,20 +797,6 @@ class ComplaintFlow(BaseFlow):
                     )
             except Exception:
                 pass
-
-            if user_description and user_description != "User provided description earlier.":
-                return FlowResponse(
-                    status="completed",
-                    response="",
-                    updated_state={"current_flow": None, "current_stage": None},
-                    tool_request="create_complaint",
-                    tool_args={
-                        "order_id": order_id,
-                        "complaint_type": sub_category,
-                        "details": f"Sub-category: {sub_category}. Details: {user_description}",
-                        "image_url": None
-                    }
-                )
 
             return FlowResponse(
                 status="waiting_for_input",
