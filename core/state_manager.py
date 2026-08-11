@@ -95,6 +95,10 @@ class StateManager:
         if re.search(r'\border\s+(?:cancellation|cancel)\b', msg_lower):
             return False
             
+        # Ignore if both "order" and "cancel" appear anywhere in the sentence (Roman Urdu/multilingual fallback)
+        if "order" in msg_lower and "cancel" in msg_lower:
+            return False
+            
         # Check for multi-word phrases first
         for phrase in ["start over", "never mind", "forget it"]:
             if phrase in msg_lower:

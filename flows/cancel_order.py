@@ -157,7 +157,7 @@ class CancelOrderFlow(BaseFlow):
                     response="I understand you have concerns regarding the pricing. I am connecting you to a customer support representative to discuss this further.",
                     tool_request="agent_handoff"
                 )
-            elif reason in ["duplicate_order", "ordered_by_mistake", "no_longer_needed"]:
+            elif reason in ["duplicate_order", "ordered_by_mistake", "no_longer_needed", "change_of_mind"]:
                 # Proceed to cancel
                 user_msg = state.conversation_history[-1]["content"] if getattr(state, "conversation_history", None) else "No message provided"
                 formatted_reason = f"{user_msg} ({reason})"

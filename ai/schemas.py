@@ -7,7 +7,7 @@ class EntityExtraction(BaseModel):
     response_mode: Optional[str] = Field(None, description="The requested response mode: 'standard' or 'complex'")
     complaint_category: Optional[str] = Field(None, description="The category of complaint: Missing, Wrong, Refund, General, Miscellaneous")
     complaint_sub_category: Optional[str] = Field(None, description="The sub-category of complaint: e.g. Missing Item, Wrong Product, Refund, etc.")
-    cancel_reason: Optional[str] = Field(None, description="Structured reason for order cancellation: duplicate_order, ordered_by_mistake, no_longer_needed, price_negotiation, shipping_negotiation")
+    cancel_reason: Optional[str] = Field(None, description="Structured reason for order cancellation: duplicate_order, ordered_by_mistake, no_longer_needed, price_negotiation, shipping_negotiation, change_of_mind")
 
 class IntentResult(BaseModel):
     intent: str = Field(..., description="The classified intent, e.g., order_tracking, complaint, general_policy, general_query, greeting, goodbye, refund, unknown, cancel_order, agent_handoff")
